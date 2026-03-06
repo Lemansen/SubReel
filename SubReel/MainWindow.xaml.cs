@@ -1,9 +1,6 @@
 ﻿using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.VersionMetadata;
-using SubReel.Application.Services;
-using SubReel.Core.Enums;
-using SubReel.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;

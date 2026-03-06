@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SubReel.Core.Models
+namespace SubReel
 {
 
     public class CrashReport

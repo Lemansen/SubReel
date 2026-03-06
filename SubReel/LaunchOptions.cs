@@ -1,6 +1,6 @@
 ﻿using CmlLib.Core.Auth;
 
-namespace SubReel.Core.Models
+namespace SubReel
 {
 #nullable enable
     public class LaunchOptions

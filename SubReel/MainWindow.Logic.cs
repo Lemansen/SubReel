@@ -25,9 +25,6 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using IO = System.IO;
 using IOPath = System.IO.Path;
-using SubReel.Core.Models;
-using SubReel.Application.Services;
-using SubReel.Infrastructure.System;
 #nullable enable
 
 

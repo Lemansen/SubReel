@@ -1,5 +1,5 @@
 ﻿using CmlLib.Core;
-using SubReel.Core.Enums;
+using SubReel;
 using System;
 using System.IO;
 using System.Threading;

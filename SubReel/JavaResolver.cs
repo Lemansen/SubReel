@@ -8,7 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 #nullable enable
 
-namespace SubReel.Infrastructure.System
+namespace SubReel
 {
     public static class JavaResolver
     {

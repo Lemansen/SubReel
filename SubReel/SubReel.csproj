@@ -27,12 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Application\Interfaces\" />
-    <Folder Include="Core\Constants\" />
-    <Folder Include="Core\DTO\" />
-    <Folder Include="Infrastructure\Update\" />
     <Folder Include="Properties\" />
-    <Folder Include="UI\Pages\" />
   </ItemGroup>
 
   <ItemGroup>

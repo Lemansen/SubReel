@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 
-namespace SubReel.Application.Services
+namespace SubReel
 {
     public static class UpdaterService
     {

@@ -2,7 +2,7 @@
 using static SubReel.MainWindow;
 #nullable enable
 
-namespace SubReel.Infrastructure.System
+namespace SubReel
 {
     public class AppSettings
     {

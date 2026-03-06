@@ -17,8 +17,6 @@ using System.Windows.Media.Effects;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using CmlLib.Core.VersionMetadata;
-using SubReel.Core.Models;
-using SubReel.Infrastructure.System;
 #nullable enable
 
 namespace SubReel

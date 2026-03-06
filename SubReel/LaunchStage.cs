@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SubReel.Core.Enums
+namespace SubReel
 {
     public enum LaunchStage
     {

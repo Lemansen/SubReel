@@ -3,7 +3,6 @@ using CmlLib.Core.Auth;
 using CmlLib.Core.Installers;
 using CmlLib.Core.ProcessBuilder;
 using Microsoft.VisualBasic.Logging;
-using SubReel.Core.Models;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -13,7 +12,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.StartPanel;
 #nullable enable
-namespace SubReel.Application.Services
+namespace SubReel
 {
     public class LauncherService
     {

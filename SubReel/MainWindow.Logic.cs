@@ -75,11 +75,7 @@ namespace SubReel
 
         public void UpdateRPC(string details, string state, string smallImg = "")
         {
-            // 1. Проверяем, существует ли клиент и инициализирован ли он
             if (_rpcClient == null || !_rpcClient.IsInitialized) return;
-
-            // 2. Логика иконки (если пусто — ставим дефолт)
-            string finalSmallKey = string.IsNullOrEmpty(smallImg) ? "icon_status" : smallImg;
 
             try
             {
@@ -101,7 +97,6 @@ namespace SubReel
             }
             catch (Exception ex)
             {
-                // Если Discord закрылся или произошла ошибка, просто пишем в лог, не ломая лаунчер
                 AppendLog($"[RPC] Ошибка обновления статуса: {ex.Message}", Brushes.Gray);
             }
         }

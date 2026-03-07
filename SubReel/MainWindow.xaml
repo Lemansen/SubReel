@@ -353,6 +353,32 @@
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
+                        <Button x:Name="BtnServer" Click="CreateBtnServer_Click" Height="160" Margin="10,0,0,0" HorizontalAlignment="Left" Width="383">
+                            <Button.Template>
+                                <ControlTemplate TargetType="{x:Type Button}">
+                                    <Grid Background="Transparent" Cursor="Hand">
+                                        <Border x:Name="Shadow" Background="{StaticResource AccentBlue}" Opacity="0" CornerRadius="22" Margin="2">
+                                            <Border.Effect>
+                                                <BlurEffect Radius="20"/>
+                                            </Border.Effect>
+                                        </Border>
+                                        <Border x:Name="Card" Background="{StaticResource CardBg}" CornerRadius="22" BorderThickness="2" BorderBrush="{StaticResource BorderSharp}" Margin="5" CacheMode="BitmapCache">
+                                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                <TextBlock Text="Наш сервер" Foreground="White" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center"/>
+                                                <TextBlock Text="Наши моды и настройки" Foreground="#666" FontSize="10" Margin="0,5,0,0" HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Card" Property="Background" Value="#181921"/>
+                                            <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource AccentBlue}"/>
+                                            <Setter TargetName="Shadow" Property="Opacity" Value="0.2"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                         <Button x:Name="BtnCreateCustom" Click="CreateCustomVersion_Click" Height="160" Margin="10">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -931,25 +957,29 @@
 
                         <!-- ================= ПРАВАЯ ЧАСТЬ ================= -->
                         <Grid Grid.Column="1">
-                            <Border Background="{StaticResource AccentBlue}"
-                CornerRadius="18"
-                Opacity="0.4">
+<Border Background="{StaticResource AccentBlue}"
+        CornerRadius="18"
+        Opacity="0.4"
+        IsHitTestVisible="False">
                                 <Border.Effect>
                                     <BlurEffect Radius="25"/>
                                 </Border.Effect>
                             </Border>
 
                             <Button x:Name="PlayBtn"
-                Content="ИГРАТЬ"
-                Click="Play_Click"
-                Style="{StaticResource AnimatedAccentPlayButtonStyle}"
-                Visibility="Visible"/>
+        Panel.ZIndex="5"
+        Height="60"
+        VerticalAlignment="Center"
+        Content="ИГРАТЬ"
+        Click="Play_Click"
+        Style="{StaticResource AnimatedAccentPlayButtonStyle}"/>
                             <Button x:Name="CancelBtn"
-                Content="ОТМЕНИТЬ"
-                Click="CancelDownload_Click"
-                Visibility="Collapsed"
-                Style="{StaticResource AnimatedAccentPlayButtonStyle}"
-                Background="Red"/>
+        Panel.ZIndex="5"
+        Content="ОТМЕНИТЬ"
+        Click="CancelDownload_Click"
+        Visibility="Collapsed"
+        Style="{StaticResource AnimatedAccentPlayButtonStyle}"
+        Background="Red"/>
                         </Grid>
                     </Grid>
                     <Grid x:Name="AuthOverlay" Visibility="Collapsed" Grid.ColumnSpan="2" CacheMode="BitmapCache">

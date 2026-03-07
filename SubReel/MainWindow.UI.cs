@@ -185,6 +185,7 @@ namespace SubReel
                 ShowNotification(ex.Message);
             }
         }
+
         private void UpdatePlayButtonVisual(LauncherState state)
         {
             if (PlayBtn == null) return;
@@ -567,6 +568,7 @@ namespace SubReel
                 // Выделяем саму карточку версии в центре (Tag="Selected")
                 BtnVanilla.Tag = null;
                 BtnCreateCustom.Tag = null;
+                BtnServer.Tag = null;
                 btn.Tag = "Selected";
 
                 if (btn == BtnVanilla)
@@ -579,9 +581,11 @@ namespace SubReel
                 {
                     if (SelectedVersionBottom != null) SelectedVersionBottom.Text = "Новая сборка";
                 }
+                else if (btn == BtnServer)
+                {
+                    if (SelectedVersionBottom != null) SelectedVersionBottom.Text = "Наш сервер";
+                }
 
-                // Вызываем визуализатор. Благодаря защите внутри него, 
-                // левое меню НЕ сбросит выделение со "Сборок".
                 SetActiveButtonVisual(btn);
             }
         }
@@ -754,6 +758,10 @@ namespace SubReel
 
 
         private void CreateCustomVersion_Click(object sender, RoutedEventArgs e)
+        {
+            ShowNotification("Этот раздел находится в разработке!");
+        }
+        private void CreateBtnServer_Click(object sender, RoutedEventArgs e)
         {
             ShowNotification("Этот раздел находится в разработке!");
         }

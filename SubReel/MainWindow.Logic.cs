@@ -886,27 +886,37 @@ del ""%~f0""
                     // ⭐ 1. ПОДТВЕРЖДАЕМ ЗАПУСК
                     isGameRunning = true;
 
+                    // Включаем интерфейс "Игра запущена" (для внутренней логики)
+                    SetState(LauncherState.Running);
+
                     SafeLog("[LAUNCH] Игра запущена успешно!", Brushes.Green);
+
+                    // ⭐ ВОЗВРАЩАЕМ КНОПКУ СРАЗУ
+                    SetGameRunningUI(false);
+
                     this.WindowState = WindowState.Minimized;
 
-                    // ⭐ 2. ЗАПУСКАЕМ "СЛЕДИЛКУ" В ФОНЕ (она развернет окно ПОТОМ)
+                    // ⭐ 2. ЗАПУСКАЕМ "СЛЕДИЛКУ" В ФОНЕ (только для разворачивания окна)
                     _ = Task.Run(() =>
                     {
                         try
                         {
                             gameProcess.WaitForExit();
+                        }
+                        catch { /* Процесс мог закрыться некорректно */ }
+                        finally
+                        {
                             Dispatcher.Invoke(() =>
                             {
-                                // Разворачиваем только когда игра ЗАКРЫЛАСЬ
+                                SetState(LauncherState.Idle);
+
                                 if (this.WindowState == WindowState.Minimized)
                                 {
                                     this.WindowState = WindowState.Normal;
                                     this.Activate();
-                                    StatusLabel.Text = "Готов к запуску";
                                 }
                             });
                         }
-                        catch { /* Процесс мог закрыться слишком быстро */ }
                     });
                 }
             }
@@ -923,33 +933,23 @@ del ""%~f0""
             {
                 Dispatcher.Invoke(() =>
                 {
-                    // Сбрасываем прогресс
-                    MainProgressBar.BeginAnimation(ProgressBar.ValueProperty, null);
                     MainProgressBar.Visibility = Visibility.Collapsed;
-                    MainProgressBar.Value = 0;
 
-                    // Если игра НЕ запустилась — возвращаем кнопку Play
                     if (!isGameRunning)
                     {
+                        // Если запуск прервался (ошибка или отмена до старта)
                         SetGameRunningUI(false);
-
-                        CancelBtn.Visibility = Visibility.Collapsed;
-                        if (CancelDownloadBtn != null)
-                            CancelDownloadBtn.Visibility = Visibility.Collapsed;
-
-                        PlayBtn.Visibility = Visibility.Visible;
-                        PlayBtn.IsEnabled = true;
-
-                        StatusLabel.Text = "Готов к запуску";
                     }
                     else
                     {
-                        StatusLabel.Text = "Игра запущена";
+                        // ⭐ Если игра запустилась — оставляем интерфейс готовым
+                        StatusLabel.Text = "ГОТОВ К ЗАПУСКУ";
+                        CancelBtn.Visibility = Visibility.Collapsed;
+                        PlayBtn.Visibility = Visibility.Visible; // Кнопка теперь видна сразу
                     }
 
                     SetVersionSelectionEnabled(true);
 
-                    // Разворачиваем окно только если запуск сорвался
                     if (!isGameRunning && this.WindowState == WindowState.Minimized)
                     {
                         this.WindowState = WindowState.Normal;
@@ -959,6 +959,7 @@ del ""%~f0""
 
                 _playLock.Release();
             }
+
         }
 
 
@@ -1466,24 +1467,29 @@ del ""%~f0""
             if (running)
             {
                 StatusLabel.Text = "ИГРА ЗАПУЩЕНА";
-
                 PlayBtn.Visibility = Visibility.Collapsed;
-                CancelBtn.Visibility = Visibility.Visible;
-
-                PlayBtn.IsEnabled = false;
-                KillGameBtn.IsEnabled = true;
+                CancelBtn.Visibility = Visibility.Collapsed;
+                // KillGameBtn.Visibility = Visibility.Visible; 
             }
             else
             {
                 StatusLabel.Text = "ГОТОВ К ЗАПУСКУ";
 
                 PlayBtn.Visibility = Visibility.Visible;
+                PlayBtn.IsEnabled = true;
+                PlayBtn.Content = "ИГРАТЬ";
+
                 CancelBtn.Visibility = Visibility.Collapsed;
 
-                PlayBtn.IsEnabled = true;
-                KillGameBtn.IsEnabled = false;
+                if (CancelDownloadBtn != null)
+                    CancelDownloadBtn.Visibility = Visibility.Collapsed;
+
+                // ✅ Важно: явно вернуть фокус на кнопку
+                PlayBtn.Focus();
+                Keyboard.ClearFocus(); // если нужно сбросить фокус с других элементов
             }
         }
+
 
 
         private string? _manualJavaPath;

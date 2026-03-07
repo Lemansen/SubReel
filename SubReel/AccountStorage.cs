@@ -38,7 +38,7 @@ public static class AccountStorage
         catch { }
     }
 
-    public static AccountData? Load()
+    public static AccountData Load()
     {
         try
         {

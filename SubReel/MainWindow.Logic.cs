@@ -847,85 +847,135 @@ del ""%~f0""
         private async void Play_Click(object sender, RoutedEventArgs e)
         {
             if (!await _playLock.WaitAsync(0)) return;
-            if (IsGameAlreadyRunning())
-            {
-                ShowNotification("Игра уже запущена");
-                return;
-            }
-            // если уже качаем — это кнопка отмены
-            if (_isInstalling && _downloadCts != null)
-            {
-                _downloadCts.Cancel();
-                return;
-            }
+
+            // 0. Флаг, который скажет лаунчеру: игра запустилась успешно?
+            bool isGameRunning = false;
+
             try
             {
-                SaveSettings();
+                MainProgressBar.Visibility = Visibility.Visible;
+                MainProgressBar.Value = 0;
+                MainProgressBar.IsIndeterminate = true;
 
+                PlayBtn.Visibility = Visibility.Collapsed;
+                CancelBtn.Visibility = Visibility.Visible;
                 SetVersionSelectionEnabled(false);
 
                 _downloadCts = new CancellationTokenSource();
+                SaveSettings();
 
                 var opt = BuildLaunchOptions();
-
-                // ⭐ АВТО ВЫБОР ONLINE / OFFLINE
                 bool hasInternet = await HasInternetAsync();
                 opt.OfflineMode = !hasInternet || !opt.IsLicensed;
-
-                SafeLog(opt.OfflineMode
-                    ? "[LAUNCH] Режим: OFFLINE"
-                    : "[LAUNCH] Режим: ONLINE",
-                    Brushes.Gray);
 
                 if (string.IsNullOrEmpty(opt.JavaPath))
                     opt.JavaPath = await ResolveJavaPathAsync(opt, _downloadCts.Token);
 
-                SafeLog("[JAVA] Итоговый путь: " + opt.JavaPath, Brushes.Gray);
-
                 string? problem = DiagnoseLaunchEnvironment(opt, AppDataPath);
-                if (problem != null)
-                    throw new Exception(problem);
+                if (problem != null) throw new Exception(problem);
 
                 var gameProcess = await InstallGameAsync(opt, _downloadCts.Token);
 
-                ConfigureProcess(gameProcess, opt);
+                if (gameProcess != null)
+                {
+                    gameProcess.EnableRaisingEvents = true;
+                    ConfigureProcess(gameProcess, opt);
 
-                await StartGameAsync(gameProcess);
+                    await StartGameAsync(gameProcess);
 
-                MonitorGame(gameProcess);
-                this.WindowState = WindowState.Minimized;
+                    // ⭐ 1. ПОДТВЕРЖДАЕМ ЗАПУСК
+                    isGameRunning = true;
+
+                    SafeLog("[LAUNCH] Игра запущена успешно!", Brushes.Green);
+                    this.WindowState = WindowState.Minimized;
+
+                    // ⭐ 2. ЗАПУСКАЕМ "СЛЕДИЛКУ" В ФОНЕ (она развернет окно ПОТОМ)
+                    _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            gameProcess.WaitForExit();
+                            Dispatcher.Invoke(() =>
+                            {
+                                // Разворачиваем только когда игра ЗАКРЫЛАСЬ
+                                if (this.WindowState == WindowState.Minimized)
+                                {
+                                    this.WindowState = WindowState.Normal;
+                                    this.Activate();
+                                    StatusLabel.Text = "Готов к запуску";
+                                }
+                            });
+                        }
+                        catch { /* Процесс мог закрыться слишком быстро */ }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                SafeLog("[LAUNCH] Операция отменена пользователем", Brushes.Orange);
             }
             catch (Exception ex)
             {
                 SafeLog("[ERROR] " + ex.Message, Brushes.Red);
-
-                string title = "Ошибка запуска";
-                string solution = ex.Message;
-
-                // 👉 отдельная ветка для Java
-                if (ex.Message.Contains("Java", StringComparison.OrdinalIgnoreCase))
-                {
-                    title = "Ошибка подготовки Java";
-                    ShowNotification("Не удалось подготовить Java");
-                    SafeLog("[JAVA] Попробуй переустановить Java", Brushes.Yellow);
-                }
-
-                // 👉 показываем overlay
-                ShowCrashDialog(
-                    CrashReport.Simple(title, solution)
-                );
+                ShowCrashDialog(CrashReport.Simple("Ошибка запуска", ex.Message));
             }
             finally
             {
                 Dispatcher.Invoke(() =>
                 {
+                    // Сбрасываем прогресс
+                    MainProgressBar.BeginAnimation(ProgressBar.ValueProperty, null);
+                    MainProgressBar.Visibility = Visibility.Collapsed;
+                    MainProgressBar.Value = 0;
+
+                    // Если игра НЕ запустилась — возвращаем кнопку Play
+                    if (!isGameRunning)
+                    {
+                        SetGameRunningUI(false);
+
+                        CancelBtn.Visibility = Visibility.Collapsed;
+                        if (CancelDownloadBtn != null)
+                            CancelDownloadBtn.Visibility = Visibility.Collapsed;
+
+                        PlayBtn.Visibility = Visibility.Visible;
+                        PlayBtn.IsEnabled = true;
+
+                        StatusLabel.Text = "Готов к запуску";
+                    }
+                    else
+                    {
+                        StatusLabel.Text = "Игра запущена";
+                    }
+
                     SetVersionSelectionEnabled(true);
-                    PlayBtn.IsEnabled = true;
+
+                    // Разворачиваем окно только если запуск сорвался
+                    if (!isGameRunning && this.WindowState == WindowState.Minimized)
+                    {
+                        this.WindowState = WindowState.Normal;
+                        this.Activate();
+                    }
                 });
 
                 _playLock.Release();
             }
         }
+
+
+
+        private void CancelDownload_Click(object sender, RoutedEventArgs e)
+        {
+            if (_downloadCts != null)
+            {
+                _downloadCts.Cancel();
+                CancelBtn.IsEnabled = false;
+                CancelDownloadBtn.IsEnabled = false; // Добавь и здесь для визуального отклика
+                StatusLabel.Text = "Статус: Отмена...";
+            }
+        }
+
+
+
 
         private async void ReinstallJava_Click(object sender, RoutedEventArgs e)
         {
@@ -1188,13 +1238,9 @@ del ""%~f0""
             public string? JavaPath { get; set; }
         }
 
-        private async Task<Process> InstallGameAsync(
-     LaunchOptions opt,
-     CancellationToken token)
+        private async Task<Process> InstallGameAsync(LaunchOptions opt, CancellationToken token)
         {
-            if (_isInstalling)
-                throw new InvalidOperationException("Установка уже выполняется");
-
+            if (_isInstalling) throw new InvalidOperationException("Установка уже выполняется");
             _isInstalling = true;
 
             try
@@ -1202,23 +1248,48 @@ del ""%~f0""
                 SetState(LauncherState.Downloading);
                 StatusLabel.Text = "Подготовка игры...";
 
-                var service = new LauncherService(
-                    AppDataPath,
-                    msg => SafeLog(msg, Brushes.Orange)
-                );
+                var service = new LauncherService(AppDataPath, msg => SafeLog(msg, Brushes.Orange));
+
+                // ⭐ Теперь эта ошибка исчезнет
+                service.ProgressChanged += (s, e) =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        MainProgressBar.IsIndeterminate = false;
+
+                        // 1. Считаем процент заполнения сами
+                        // Формула: (Выполнено / Всего) * 100
+                        double percentage = 0;
+                        if (e.TotalTasks > 0)
+                        {
+                            percentage = (double)e.ProgressedTasks / e.TotalTasks * 100;
+                        }
+
+                        // 2. Запускаем плавное заполнение полоски
+                        DoubleAnimation smoothProgress = new DoubleAnimation
+                        {
+                            To = percentage,
+                            Duration = TimeSpan.FromMilliseconds(450), // Время "доезда" полоски
+                            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                        };
+
+                        MainProgressBar.BeginAnimation(ProgressBar.ValueProperty, smoothProgress);
+
+                        // 3. Обновляем текст (показываем и цифры, и проценты)
+                        StatusLabel.Text = $"Загрузка: {e.ProgressedTasks}/{e.TotalTasks} ({(int)percentage}%)";
+                    });
+                };
+
+
 
                 var process = await service.PrepareAndCreateProcessAsync(
-                    opt.Version,
-                    opt,
-                    null,
-                    null,
-                    token
-                );
+                    opt.Version, opt, null, null, token);
 
                 StatusLabel.Text = "Готово";
                 SetState(LauncherState.Installing);
 
                 return process;
+
             }
             catch (OperationCanceledException)
             {
@@ -1236,10 +1307,11 @@ del ""%~f0""
             finally
             {
                 _isInstalling = false;
-                PlayBtn.IsEnabled = true;
-                SetVersionSelectionEnabled(true);
+                // !!! ОТСЮДА УДАЛИЛИ PlayBtn.IsEnabled = true и SetVersionSelectionEnabled(true)
+                // Мы перенесем их в Play_Click, чтобы они сработали ПОСЛЕ закрытия игры
             }
         }
+
         private async Task<string> PrepareJavaAsync(LaunchOptions opt, CancellationToken token)
         {
             PlayBtn.IsEnabled = false;
@@ -1394,16 +1466,25 @@ del ""%~f0""
             if (running)
             {
                 StatusLabel.Text = "ИГРА ЗАПУЩЕНА";
+
+                PlayBtn.Visibility = Visibility.Collapsed;
+                CancelBtn.Visibility = Visibility.Visible;
+
                 PlayBtn.IsEnabled = false;
                 KillGameBtn.IsEnabled = true;
             }
             else
             {
                 StatusLabel.Text = "ГОТОВ К ЗАПУСКУ";
+
+                PlayBtn.Visibility = Visibility.Visible;
+                CancelBtn.Visibility = Visibility.Collapsed;
+
                 PlayBtn.IsEnabled = true;
                 KillGameBtn.IsEnabled = false;
             }
         }
+
 
         private string? _manualJavaPath;
         private void SaveLogToFile(string fileName)

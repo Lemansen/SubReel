@@ -826,9 +826,13 @@
                         <Grid Margin="0,0,25,0" VerticalAlignment="Bottom">
 
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="24"/>
+                                <RowDefinition Height="Auto"/>
+                                <!-- Статусная панель -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- Прогресс-бар под статусом -->
                             </Grid.RowDefinitions>
 
+                            <!-- СТАТУСНАЯ ПАНЕЛЬ -->
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -889,6 +893,40 @@
                     Click="CancelDownload_Click"/>
                             </Grid>
 
+                            <!-- ПРОГРЕСС-БАР ПОД СТАТУСОМ -->
+                            <ProgressBar x:Name="MainProgressBar"
+             Grid.Row="1"
+             Height="6"
+             Margin="0,6,0,0"
+             Minimum="0"
+             Maximum="100"
+             Value="0"
+             Visibility="Collapsed"
+             Background="#1AFFFFFF"
+             BorderThickness="0">
+                                <ProgressBar.Template>
+                                    <ControlTemplate TargetType="ProgressBar">
+                                        <Grid>
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="3"/>
+
+                                            <Border x:Name="PART_Indicator" 
+                        HorizontalAlignment="Left" 
+                        CornerRadius="3">
+                                                <Border.Background>
+                                                    <StaticResource ResourceKey="AccentBlue"/>
+                                                </Border.Background>
+                                                <Border.Effect>
+                                                    <DropShadowEffect Color="#78C8FF" 
+                                         BlurRadius="10" 
+                                         ShadowDepth="0" 
+                                         Opacity="0.7"/>
+                                                </Border.Effect>
+                                            </Border>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </ProgressBar.Template>
+                            </ProgressBar>
+
                         </Grid>
 
                         <!-- ================= ПРАВАЯ ЧАСТЬ ================= -->
@@ -902,31 +940,37 @@
                             </Border>
 
                             <Button x:Name="PlayBtn"
-        Content="ИГРАТЬ"
-        Click="Play_Click"
-        Style="{StaticResource AnimatedAccentPlayButtonStyle}"/>
-
+                Content="ИГРАТЬ"
+                Click="Play_Click"
+                Style="{StaticResource AnimatedAccentPlayButtonStyle}"
+                Visibility="Visible"/>
+                            <Button x:Name="CancelBtn"
+                Content="ОТМЕНИТЬ"
+                Click="CancelDownload_Click"
+                Visibility="Collapsed"
+                Style="{StaticResource AnimatedAccentPlayButtonStyle}"
+                Background="Red"/>
                         </Grid>
                     </Grid>
                     <Grid x:Name="AuthOverlay" Visibility="Collapsed" Grid.ColumnSpan="2" CacheMode="BitmapCache">
                     <Border Background="#000000" Opacity="0.85" MouseLeftButtonDown="AuthOverlay_Close"/>
-                    <Border x:Name="AuthChild" Width="340" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource CardBg}" CornerRadius="20" BorderThickness="2" BorderBrush="{StaticResource AccentBlue}" RenderTransformOrigin="0.5,0.5">
+                        <Border x:Name="AuthChild" Width="340" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource CardBg}" CornerRadius="20" BorderThickness="2" BorderBrush="{StaticResource AccentBlue}" RenderTransformOrigin="0.5,0.5">
                         <Border.RenderTransform>
                             <ScaleTransform ScaleX="1" ScaleY="1"/>
                         </Border.RenderTransform>
                         <StackPanel Margin="30">
                             <TextBlock Text="АВТОРИЗАЦИЯ" Foreground="White" FontWeight="Black" FontSize="18" HorizontalAlignment="Center" Margin="0,0,0,25"/>
 
-                            <TextBlock Text="Ваш никнейм" Foreground="{StaticResource TextGray}" FontSize="12" FontWeight="Bold" Margin="5,0,0,8"/>
+                                <TextBlock Text="Ваш никнейм" Foreground="{StaticResource TextGray}" FontSize="12" FontWeight="Bold" Margin="5,0,0,8"/>
 
-                            <TextBox x:Name="NicknameBox" Text="Player" Background="#08080A" Foreground="White" BorderThickness="1.5" BorderBrush="{StaticResource BorderSharp}" Padding="12" FontSize="16" FontWeight="Bold" CaretBrush="{StaticResource AccentBlue}" MaxLength="16" PreviewTextInput="NicknameBox_PreviewTextInput" TextChanged="NicknameBox_TextChanged">
+                                <TextBox x:Name="NicknameBox" Text="Player" Background="#08080A" Foreground="White" BorderThickness="1.5" BorderBrush="{StaticResource BorderSharp}" Padding="12" FontSize="16" FontWeight="Bold" CaretBrush="{StaticResource AccentBlue}" MaxLength="16" PreviewTextInput="NicknameBox_PreviewTextInput" TextChanged="NicknameBox_TextChanged">
                                 <TextBox.Resources>
                                     <Style TargetType="{x:Type Border}">
                                         <Setter Property="CornerRadius" Value="10"/>
                                     </Style>
                                 </TextBox.Resources>
                             </TextBox>
-                            <Button Content="ПРИМЕНИТЬ" Click="SaveAuth_Click" Margin="0,20,0,0" Height="50" Background="{StaticResource AccentBlue}" Foreground="White" FontWeight="Black" FontSize="14">
+                                <Button Content="ПРИМЕНИТЬ" Click="SaveAuth_Click" Margin="0,20,0,0" Height="50" Background="{StaticResource AccentBlue}" Foreground="White" FontWeight="Black" FontSize="14">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="BtnBorder" Background="{TemplateBinding Background}" CornerRadius="15">
@@ -941,7 +985,7 @@
                                 </Button.Template>
                             </Button>
 
-                            <TextBlock Text="или" Foreground="{StaticResource TextGray}" HorizontalAlignment="Center" Margin="0,15,0,15" FontSize="12"/>
+                                <TextBlock Text="или" Foreground="{StaticResource TextGray}" HorizontalAlignment="Center" Margin="0,15,0,15" FontSize="12"/>
 
                             <Button x:Name="MSLoginBtn" Content="ВОЙТИ ЧЕРЕЗ MICROSOFT" Click="MSLogin_Click" Height="45" Background="#2D2D2D" Foreground="White" FontWeight="Bold" FontSize="12">
                                 <Button.Template>
@@ -972,7 +1016,7 @@
                         </Style>
                     </Grid.Style>
                     <Border Background="#000000" Opacity="0.8" MouseLeftButtonDown="CloseVersionOverlay_Click"/>
-                    <Border Width="380" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource CardBg}" CornerRadius="25" BorderThickness="2" BorderBrush="{StaticResource AccentBlue}">
+                        <Border Width="380" VerticalAlignment="Center" HorizontalAlignment="Center" Background="{StaticResource CardBg}" CornerRadius="25" BorderThickness="2" BorderBrush="{StaticResource AccentBlue}">
                         <StackPanel Margin="30">
                             <TextBlock Text="ВЫБОР ВЕРСИИ" Foreground="White" FontWeight="Black" FontSize="20" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                             <TextBlock Text="Выберите версию игры для запуска"

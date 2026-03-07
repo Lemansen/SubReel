@@ -20,9 +20,12 @@ namespace SubReel
         private readonly Action<string>? _log;
         private readonly string _minecraftPath;
 
+        // ⭐ 1. Добавляем событие прогресса
+        public event EventHandler<InstallerProgressChangedEventArgs>? ProgressChanged;
+
         public LauncherService(string gamePath, Action<string>? log = null)
         {
-            _minecraftPath = gamePath;   // ✅ просто сохраняем путь
+            _minecraftPath = gamePath;
             _gamePath = gamePath;
             _log = log;
         }
@@ -32,54 +35,36 @@ namespace SubReel
             var versionPath = Path.Combine(_minecraftPath, "versions", versionId);
             return Directory.Exists(versionPath);
         }
-        public async Task LaunchAsync(LaunchOptions options)
-        {
-            var path = new MinecraftPath(options.GamePath);
-            var launcher = new MinecraftLauncher(path);
 
-            if (options.OfflineMode)
-            {
-                if (!IsVersionInstalled(options.Version))
-                    throw new Exception("Версия не установлена локально");
-
-                var launchOption = new MLaunchOption
-                {
-                    Session = MSession.CreateOfflineSession(options.Nickname),
-                    MaximumRamMb = options.MaxRamMb,
-                    MinimumRamMb = options.MinRamMb
-                };
-
-                await launcher.CreateProcessAsync(options.Version, launchOption);
-                return;
-            }
-
-            // обычный online режим
-            await launcher.InstallAsync(options.Version);
-        }
         public async Task<Process> PrepareAndCreateProcessAsync(
-    string version,
-    LaunchOptions options,
-    IProgress<InstallerProgressChangedEventArgs>? installerProgress,
-    IProgress<ByteProgress>? byteProgress,
-    CancellationToken token)
+            string version,
+            LaunchOptions options,
+            IProgress<InstallerProgressChangedEventArgs>? installerProgress,
+            IProgress<ByteProgress>? byteProgress,
+            CancellationToken token)
         {
             var launcher = new MinecraftLauncher(_gamePath);
 
+            // ⭐ 2. Создаем мост для прогресса
+            // Если внешний прогресс не передан, создаем свой, который вызывает наше событие
+            var progressBridge = installerProgress ?? new Progress<InstallerProgressChangedEventArgs>(e =>
+            {
+                ProgressChanged?.Invoke(this, e);
+            });
+
             var ver = await launcher.GetVersionAsync(version);
 
+            // Передаем наш progressBridge в чекер
             await GameIntegrityChecker.EnsureGameInstalledAsync(
                 launcher,
                 version,
-                installerProgress,
+                progressBridge, // используем мост
                 byteProgress,
                 token,
                 _log
             );
 
-            var nickname = string.IsNullOrWhiteSpace(options.Nickname)
-                ? "Player"
-                : options.Nickname;
-
+            var nickname = string.IsNullOrWhiteSpace(options.Nickname) ? "Player" : options.Nickname;
             var session = options.Session ?? MSession.CreateOfflineSession(nickname);
 
             var launchOption = new MLaunchOption
@@ -92,4 +77,6 @@ namespace SubReel
             return await launcher.CreateProcessAsync(ver.Id, launchOption);
         }
     }
-    }
+
+}
+    

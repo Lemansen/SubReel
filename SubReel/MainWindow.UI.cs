@@ -218,22 +218,35 @@ namespace SubReel
         }
         private void AnimateButtonColor(Color targetColor)
         {
+            // 1. Пытаемся получить текущую кисть
             if (PlayBtn.Background is not SolidColorBrush brush)
             {
-                brush = new SolidColorBrush(targetColor);
+                // Если фона нет или это градиент, создаем новую кисть
+                brush = new SolidColorBrush(Colors.Transparent);
                 PlayBtn.Background = brush;
-                return;
+            }
+            else if (brush.IsFrozen)
+            {
+                // !!! ВОТ РЕШЕНИЕ ПРОБЛЕМЫ ЗАМОРОЗКИ !!!
+                // Если кисть заморожена, создаем ее изменяемую копию (Clone)
+                brush = brush.Clone();
+                PlayBtn.Background = brush;
             }
 
+            // 2. Теперь мы уверены, что кисть существует и НЕ заморожена.
+            // Запускаем анимацию.
             var anim = new ColorAnimation
             {
                 To = targetColor,
                 Duration = TimeSpan.FromMilliseconds(250),
-                EasingFunction = new QuadraticEase()
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
             };
 
+            // Анимируем свойство Color у кисти
             brush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
+
+
         private void AnimatePlayButtonText(bool enable)
         {
             if (PlayBtn == null) return;
@@ -996,16 +1009,7 @@ namespace SubReel
         {
 
         }
-        private void CancelDownload_Click(object sender, RoutedEventArgs e)
-        {
-            if (_downloadCts == null)
-                return;
-
-            SafeLog("[LAUNCH] Пользователь отменил установку", Brushes.Orange);
-
-            _downloadCts.Cancel();
-            SetState(LauncherState.Canceled);
-        }
+      
         public class DownloadProgressInfo
         {
             public long BytesReceived { get; set; }

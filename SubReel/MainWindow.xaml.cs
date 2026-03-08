@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -14,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -116,6 +118,25 @@ namespace SubReel
             }
         }
     } // Конец класса NewsItem
+    public class StarConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (bool)value ? "★" : "☆";
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    public class StarColorConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (bool)value
+                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFCC00")) // Золотой
+                : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#44FFFFFF")); // Полупрозрачный белый
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
 
     // --- ОСНОВНОЙ КЛАСС ОКНА ---
     public partial class MainWindow : Window
@@ -217,47 +238,17 @@ namespace SubReel
                     var path = new MinecraftPath(AppDataPath);
                     var launcher = new MinecraftLauncher(path);
                     var versions = await launcher.GetAllVersionsAsync();
-                    FillVersionList(versions);
                 }
 
                 // ⭐ 3. Обновление из сети
                 await VersionCacheManager.GetManifestJsonAsync(msg => SafeLog(msg));
-                await LoadVersionsAsync();
             }
             catch (Exception ex)
             {
                 SafeLog("[Startup] " + ex.Message, Brushes.Red);
             }
         }
-        private async Task LoadVersionsAsync()
-        {
-            try
-            {
-                var path = new MinecraftPath(AppDataPath);
-                var launcher = new MinecraftLauncher(path);
-
-                var versions = await launcher.GetAllVersionsAsync();
-
-                Dispatcher.Invoke(() =>
-                {
-                    VersionListBox.Items.Clear();
-
-                    bool showSnapshots = ShowSnapshotsCheckBox?.IsChecked == true;
-
-                    foreach (var v in versions)
-                    {
-                        if (!showSnapshots && v.Type != "release")
-                            continue;
-
-                        VersionListBox.Items.Add(v.Name);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                SafeLog("[VERSIONS ERROR] " + ex.Message, Brushes.Red);
-            }
-        }
+        
         private void FocusExistingInstance()
         {
             try
@@ -324,30 +315,6 @@ namespace SubReel
 
         private string VersionCachePath =>
     Path.Combine(AppDataPath, "version_manifest.json");
-
-        private void FillVersionList(CmlLib.Core.VersionMetadata.VersionMetadataCollection? versions)
-        {
-            if (VersionListBox == null) return;
-            VersionListBox.Items.Clear();
-            if (versions == null) return;
-
-            bool showSnapshots = ShowSnapshotsCheckBox?.IsChecked == true;
-
-            foreach (var v in versions)
-            {
-                if (v == null) continue;
-
-                if (!showSnapshots && v.Type != "release")
-                    continue;
-
-                VersionListBox.Items.Add(new ListBoxItem
-                {
-                    Content = v.Name,
-                    IsSelected = (v.Name == _selectedVersion),
-                    Foreground = Brushes.White
-                });
-            }
-        }
 
         public MainWindow()
         {
@@ -613,7 +580,6 @@ namespace SubReel
         private async void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
             await TryAutoUpdateSilent();
-            await LoadMinecraftVersionsAsync();
 
             _updateTimer = new DispatcherTimer();
             _updateTimer.Interval = TimeSpan.FromMinutes(1);

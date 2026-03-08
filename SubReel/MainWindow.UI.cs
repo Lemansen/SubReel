@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+﻿using CmlLib.Core.VersionMetadata;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -14,9 +15,11 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using CmlLib.Core.VersionMetadata;
+using System.Collections.ObjectModel;
+using System.Linq;
 #nullable enable
 
 namespace SubReel
@@ -35,7 +38,8 @@ namespace SubReel
             Canceled,      // отменено
             Error          // ошибка
         }
-
+        public ObservableCollection<BuildModel> FavoriteBuilds { get; set; } = new();
+        public ObservableCollection<BuildModel> CustomBuilds { get; set; } = new();
         private LauncherState _state = LauncherState.Idle;
         private bool _isProcessingNotifications = false;
         private Random _rnd = new Random();
@@ -378,23 +382,36 @@ namespace SubReel
         }
 
         // --- НАВИГАЦИЯ И ПАНЕЛИ ---
+        // 1. Улучшаем твой SwitchTab, чтобы он прятал ВСЕ страницы
         private void SwitchTab(FrameworkElement panel)
         {
+            // Определяем текущую вкладку
             if (panel == BuildsPanel) _currentTab = "home";
             else if (panel == SettingsPanel) _currentTab = "settings";
+            else if (panel == CreateBuildPage) _currentTab = "create"; // <--- Добавили
+            else if (panel == NewsPanel) _currentTab = "news";
             else _currentTab = "other";
 
+            // Скрываем абсолютно все панели (включая контейнер главной страницы)
+            if (MainPageContent != null) MainPageContent.Visibility = Visibility.Collapsed;
             if (BuildsPanel != null) BuildsPanel.Visibility = Visibility.Collapsed;
             if (SettingsPanel != null) SettingsPanel.Visibility = Visibility.Collapsed;
             if (NewsPanel != null) NewsPanel.Visibility = Visibility.Collapsed;
+            if (CommunityPanel != null) CommunityPanel.Visibility = Visibility.Collapsed;
+            if (CreateBuildPage != null) CreateBuildPage.Visibility = Visibility.Collapsed;
 
+            // Показываем нужную
             panel.Visibility = Visibility.Visible;
 
-            SetActiveMenuButton(); // ⭐ ВАЖНО
+            // Если это страница создания, убеждаемся, что её родитель (MainPageContent) тоже виден, 
+            // ЕСЛИ она находится внутри него. Если она лежит в корне — просто показываем её.
+
+            SetActiveMenuButton();
 
             if (Resources["FadeIn"] is Storyboard sb)
                 sb.Begin(panel);
         }
+
 
         private void ShowPanel(FrameworkElement panelToShow)
         {
@@ -415,19 +432,21 @@ namespace SubReel
         }
         private void NewsBtn_Click(object sender, RoutedEventArgs e)
         {
+            AdditionalHeaderText.Text = "Новости"; // Меняем текст
+            AdditionalHeaderPart.Visibility = Visibility.Visible; // Показываем добавку
+            BreadcrumbsText.Visibility = Visibility.Collapsed;   // Прячем крошки (как ты и просил)
+
             ShowPanel(NewsPanel);
             SetActiveButton(BtnNews);
             LoadNews();
         }
 
-        private void BackToBuilds_Click(object sender, RoutedEventArgs e)
-        {
-            ShowPanel(BuildsPanel);
-            SetActiveButton(BtnBuilds);
-        }
-
         private void SettingsBtn_Click(object sender, RoutedEventArgs e)
         {
+            AdditionalHeaderText.Text = "Настройки";
+            AdditionalHeaderPart.Visibility = Visibility.Visible;
+            BreadcrumbsText.Visibility = Visibility.Collapsed;
+
             ShowPanel(SettingsPanel);
             SetActiveButton(BtnSettings);
             UpdateRamUI();
@@ -566,18 +585,11 @@ namespace SubReel
             if (sender is Button btn)
             {
                 // Выделяем саму карточку версии в центре (Tag="Selected")
-                BtnVanilla.Tag = null;
                 BtnCreateCustom.Tag = null;
                 BtnServer.Tag = null;
                 btn.Tag = "Selected";
 
-                if (btn == BtnVanilla)
-                {
-                    string version = btn.Content?.ToString() ?? "1.21.1";
-                    _selectedVersion = version;
-                    if (SelectedVersionBottom != null) SelectedVersionBottom.Text = $"Vanilla {version}";
-                }
-                else if (btn == BtnCreateCustom)
+                if (btn == BtnCreateCustom)
                 {
                     if (SelectedVersionBottom != null) SelectedVersionBottom.Text = "Новая сборка";
                 }
@@ -631,15 +643,6 @@ namespace SubReel
                     btn.Foreground = (SolidColorBrush)FindResource("TextGray");
                 }
             }
-        }
-
-
-
-
-        private void BtnVanilla_RightClick(object sender, MouseButtonEventArgs e)
-        {
-            VersionOverlay.Visibility = Visibility.Visible;
-            e.Handled = true;
         }
 
         // Свернуть окно
@@ -703,69 +706,197 @@ namespace SubReel
 
             selectedButton.Tag = "Active"; // Выделяем нажатую
         }
-
-
-        private void CloseVersionOverlay_Click(object sender, MouseButtonEventArgs e)
-        {
-            VersionOverlay.Visibility = Visibility.Collapsed;
-        }
-
-        private void ApplyVersion_Click(object sender, RoutedEventArgs e)
-        {
-            // Проверяем, что в списке действительно что-то выбрано
-            if (VersionListBox?.SelectedItem is ListBoxItem selected && selected.Content != null)
-            {
-                string newVersion = selected.Content.ToString() ?? "1.21.1";
-
-                // Обновляем переменную выбранной версии
-                _selectedVersion = newVersion;
-
-                // 1. Сохраняем в конфиг сразу
-                SaveSettings();
-
-                // 2. Обновляем текст на главной кнопке и её состояние (Безопасно)
-                if (BtnVanilla != null)
-                {
-                    BtnVanilla.Content = newVersion;
-                    // Переносим установку Tag сюда, чтобы избежать вылета, если кнопка null
-                    BtnVanilla.Tag = "Selected";
-                }
-
-                // 3. Обновляем текст в информационной панели снизу
-                if (SelectedVersionBottom != null)
-                {
-                    SelectedVersionBottom.Text = $"Vanilla {newVersion}";
-                }
-
-                // 4. Закрываем оверлей выбора версий
-                if (VersionOverlay != null)
-                {
-                    VersionOverlay.Visibility = Visibility.Collapsed;
-                }
-
-                // Возвращаем фокус на окно (помогает, если нужно сразу управлять с клавиатуры)
-                this.Focus();
-
-                // Показываем уведомление пользователю
-                ShowNotification($"ВЕРСИЯ {newVersion} ВЫБРАНА");
-            }
-        }
-        private void VersionEditBtn_Click(object sender, MouseButtonEventArgs e)
-        {
-            e.Handled = true; // Чтобы клик не ушел на саму карточку
-            VersionOverlay.Visibility = Visibility.Visible;
-        }
-
-
+        // 1. Переход с Главной на страницу Создания
+        // 1. Вход в меню создания (нажимаем "Создать" в главном меню)
         private void CreateCustomVersion_Click(object sender, RoutedEventArgs e)
         {
-            ShowNotification("Этот раздел находится в разработке!");
+            // Показываем первую часть: SubRell Studio | Создание
+            AdditionalHeaderPart.Visibility = Visibility.Visible;
+            AdditionalHeaderText.Text = "Создание";
+
+            // Скрываем вторую часть (она пока не нужна)
+            BreadcrumbsText.Visibility = Visibility.Collapsed;
+
+            // Сброс видимости панелей контента
+            CreationTypeGrid.Visibility = Visibility.Visible;
+            CreationDetailsArea.Visibility = Visibility.Collapsed;
+            CreatePageTitle.Text = "ВЫБЕРИТЕ СПОСОБ СОЗДАНИЯ";
+
+            SwitchTab(CreateBuildPage);
+            SafeLog("[UI] Переход в меню создания сборки", Brushes.AliceBlue);
         }
+
+        // 2. Выбор конкретного типа (Custom, Modrinth и т.д.)
+        private void SelectCreationType_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string type)
+            {
+                CreationTypeGrid.Visibility = Visibility.Collapsed;
+                CreationDetailsArea.Visibility = Visibility.Visible;
+
+                // Включаем вторую крошку: SubRell Studio | Создание | [Тип]
+                BreadcrumbsText.Visibility = Visibility.Visible;
+
+                switch (type)
+                {
+                    case "Custom":
+                        CreatePageTitle.Text = "СОЗДАНИЕ: СВОЯ СБОРКА";
+                        SubHeaderText.Text = "Своя сборка"; // Текст в самый верх
+                        CreationModeText.Text = "Режим: Своя сборка"; // Текст в карточку превью
+                        MiniPreviewIcon.Text = "🛠";
+                        break;
+
+                    case "Modrinth":
+                        CreatePageTitle.Text = "СОЗДАНИЕ: MODRINTH";
+                        SubHeaderText.Text = "Modrinth";
+                        CreationModeText.Text = "Режим: Modrinth";
+                        MiniPreviewIcon.Text = "M";
+                        break;
+
+                    case "Curse":
+                        CreatePageTitle.Text = "СОЗДАНИЕ: CURSEFORGE";
+                        SubHeaderText.Text = "CurseForge";
+                        CreationModeText.Text = "Режим: CurseForge";
+                        MiniPreviewIcon.Text = "C";
+                        break;
+
+                    case "Secret":
+                        CreatePageTitle.Text = "СОЗДАНИЕ: НОВАЯ ФИЧА";
+                        SubHeaderText.Text = "В планах";
+                        CreationModeText.Text = "Режим: В планах";
+                        MiniPreviewIcon.Text = "✨";
+                        break;
+                }
+            }
+        }
+
+        // 3. Кнопка "Назад" внутри конструктора (возврат к плиткам)
+        private void BackToCreationType_Click(object sender, RoutedEventArgs e)
+        {
+            CreationDetailsArea.Visibility = Visibility.Collapsed;
+            CreationTypeGrid.Visibility = Visibility.Visible;
+
+            CreatePageTitle.Text = "ВЫБЕРИТЕ СПОСОБ СОЗДАНИЯ";
+
+            // Прячем только последнюю часть крошек
+            BreadcrumbsText.Visibility = Visibility.Collapsed;
+        }
+
+        // 4. Полный выход (Кнопка X или завершение создания)
+        private void BackToMain_Click(object sender, RoutedEventArgs e)
+        {
+            // Прячем всю цепочку крошек
+            AdditionalHeaderPart.Visibility = Visibility.Collapsed;
+            BreadcrumbsText.Visibility = Visibility.Collapsed;
+
+            SwitchTab(BuildsPanel);
+            SetActiveButton(BtnBuilds);
+
+            if (BuildNameInput != null) BuildNameInput.Text = "My New Pack";
+        }
+        private void BackToBuilds_Click(object sender, RoutedEventArgs e)
+        {
+            BackToMain_Click(sender, e);
+        }
+        // Проверь, чтобы название СТРОГО совпадало с тем, что в XAML
+        // 1. В методе создания сборки убираем ручное добавление кнопок
+        private void ConfirmCreate_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(BuildNameInput.Text))
+            {
+                ShowNotification("УКАЖИТЕ НАЗВАНИЕ СБОРКИ!");
+                return;
+            }
+
+            string name = BuildNameInput.Text;
+            string version = ((ComboBoxItem)VersionSelector.SelectedItem).Content.ToString();
+            string loader = ((ComboBoxItem)LoaderSelector.SelectedItem).Content.ToString();
+
+            // Создаем модель данных
+            BuildModel build = new BuildModel(name, version, loader);
+
+            // Добавляем ТОЛЬКО в менеджер данных
+            BuildManager.AddBuild(build);
+
+            // Обновляем списки (ItemsControl сами перерисуют карточки)
+            RefreshBuildsUI();
+
+            ShowNotification($"СБОРКА '{name.ToUpper()}' СОЗДАНА");
+            BackToMain_Click(null, null);
+        }
+
+        // 2. Исправляем обработчик избранного (берем данные из DataContext)
+        private void ToggleFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+
+            // В ItemsControl источником данных (DataContext) для кнопки является сама модель BuildModel
+            if (sender is FrameworkElement element && element.DataContext is BuildModel build)
+            {
+                build.IsFavorite = !build.IsFavorite;
+
+                // Пересобираем списки, чтобы карточка перепрыгнула из "Созданных" в "Избранное"
+                RefreshBuildsUI();
+
+                SafeLog($"[UI] Сборка {build.Name} {(build.IsFavorite ? "добавлена в" : "удалена из")} избранного", Brushes.Gray);
+            }
+        }
+
+
         private void CreateBtnServer_Click(object sender, RoutedEventArgs e)
         {
             ShowNotification("Этот раздел находится в разработке!");
         }
 
+        private void RefreshBuildsUI()
+        {
+            if (FavoriteBuildsContainer == null || CustomBuildsContainer == null) return;
+
+            // Привязываем коллекции к UI (если еще не привязаны)
+            if (FavoriteBuildsContainer.ItemsSource == null)
+                FavoriteBuildsContainer.ItemsSource = FavoriteBuilds;
+            if (CustomBuildsContainer.ItemsSource == null)
+                CustomBuildsContainer.ItemsSource = CustomBuilds;
+
+            string search = SearchBuildsBox?.Text ?? "";
+
+            // Очищаем списки
+            FavoriteBuilds.Clear();
+            CustomBuilds.Clear();
+
+            // Заполняем данными
+            foreach (var build in BuildManager.GetFiltered(search, true))
+                FavoriteBuilds.Add(build);
+
+            foreach (var build in BuildManager.GetFiltered(search, false))
+                CustomBuilds.Add(build);
+
+            // Показываем/скрываем секцию избранного
+            if (FavoritesSection != null)
+                FavoritesSection.Visibility = FavoriteBuilds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        // Обработчик поиска
+        private void SearchBuildsBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            RefreshBuildsUI();
+        }
+        // Для клика по самой карточке
+        private void OpenBuildSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // В ItemsControl данные лежат в DataContext
+            if (sender is Button btn && btn.DataContext is BuildModel build)
+            {
+                ShowNotification($"ЗАГРУЗКА: {build.Name.ToUpper()}");
+                // Твоя логика запуска игры здесь
+            }
+        }
+        // Для клика по самой карточке (открытие)
+        private void OpenBuild_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = (Button)sender;
+            var build = (BuildModel)btn.Tag;
+            MessageBox.Show($"Открываем сборку: {build.Name}");
+        }
         // Исправленная анимация (принимает FrameworkElement для доступа к свойствам анимации)
         private void ShowPanelWithAnimation(FrameworkElement panel)
         {
@@ -972,10 +1103,6 @@ namespace SubReel
                 SafeLog($"[System] Ошибка открытия папки логов: {ex.Message}", Brushes.Red);
             }
         }
-        private async void ShowSnapshotsCheckBox_Changed(object sender, RoutedEventArgs e)
-        {
-            await LoadMinecraftVersionsAsync();
-        }
         private void ConsoleCheck_Click(object sender, RoutedEventArgs e)
         {
             SaveSettings();
@@ -1024,17 +1151,6 @@ namespace SubReel
             public long TotalBytes { get; set; }
             public double Percent =>
                 TotalBytes > 0 ? BytesReceived * 100.0 / TotalBytes : 0;
-        }
-        private void SetVersionSelectionEnabled(bool enabled)
-        {
-            if (VersionListBox != null)
-                VersionListBox.IsEnabled = enabled;
-
-            if (BtnVanilla != null)
-                BtnVanilla.IsEnabled = enabled;
-
-            if (ShowSnapshotsCheckBox != null)
-                ShowSnapshotsCheckBox.IsEnabled = enabled;
         }
 
         private string FormatBytes(long bytes)

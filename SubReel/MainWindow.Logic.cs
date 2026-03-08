@@ -148,14 +148,6 @@ namespace SubReel
 
             if (GbText != null)
                 GbText.Text = $"{(s.Ram / 1024.0):F1} GB";
-
-            _selectedVersion = s.SelectedVersion;
-
-            if (BtnVanilla != null)
-                BtnVanilla.Content = _selectedVersion;
-
-            if (SelectedVersionBottom != null)
-                SelectedVersionBottom.Text = $"Vanilla {_selectedVersion}";
         }
 
         public class LauncherSettings
@@ -248,18 +240,6 @@ namespace SubReel
                                     GbText.Text = $"{(ramValue / 1024.0):F1} GB";
                             }), System.Windows.Threading.DispatcherPriority.Background);
                         }
-                    }
-
-                    // --- ВЕРСИЯ ---
-                    if (root.TryGetProperty("SelectedVersion", out var verProp))
-                    {
-                        _selectedVersion = verProp.GetString() ?? "1.21.1";
-
-                        if (BtnVanilla != null)
-                            BtnVanilla.Content = _selectedVersion;
-
-                        if (SelectedVersionBottom != null)
-                            SelectedVersionBottom.Text = $"Vanilla {_selectedVersion}";
                     }
 
                     // --- ЛИЦЕНЗИЯ ---
@@ -859,7 +839,6 @@ del ""%~f0""
 
                 PlayBtn.Visibility = Visibility.Collapsed;
                 CancelBtn.Visibility = Visibility.Visible;
-                SetVersionSelectionEnabled(false);
 
                 _downloadCts = new CancellationTokenSource();
                 SaveSettings();
@@ -947,8 +926,6 @@ del ""%~f0""
                         CancelBtn.Visibility = Visibility.Collapsed;
                         PlayBtn.Visibility = Visibility.Visible; // Кнопка теперь видна сразу
                     }
-
-                    SetVersionSelectionEnabled(true);
 
                     if (!isGameRunning && this.WindowState == WindowState.Minimized)
                     {
@@ -1523,78 +1500,7 @@ del ""%~f0""
                 SafeLog($"[System] Не удалось сохранить файл лога: {ex.Message}", Brushes.Red);
             }
         }
-        private async Task LoadMinecraftVersionsAsync()
-        {
-            if (_isSyncRunning) return;
-            _isSyncRunning = true;
-
-            if (VersionCacheManager.HasCache)
-            {
-                SafeLog("[CACHE] Мгновенная загрузка списка версий", Brushes.Gray);
-
-                var path = new MinecraftPath(AppDataPath);
-                var launcher = new MinecraftLauncher(path);
-
-                var versions = await launcher.GetAllVersionsAsync();
-
-                Dispatcher.Invoke(() => FillVersionList(versions));
-            }
-
-            try
-            {
-                var path = new CmlLib.Core.MinecraftPath(AppDataPath);
-                var launcher = new CmlLib.Core.MinecraftLauncher(path);
-
-                if (!VersionCacheManager.HasCache)
-                    await VersionCacheManager.GetManifestJsonAsync(msg => SafeLog(msg));
-
-                var collection = await launcher.GetAllVersionsAsync();
-
-                try
-                {
-                    var versions = await launcher.GetAllVersionsAsync();
-                    FillVersionList(versions);
-                }
-                catch
-                {
-                    SafeLog("Нет интернета — показываю локальные версии", Brushes.Orange);
-                    LoadLocalVersions();
-                }
-
-                SafeLog($"[Debug] Версий получено", Brushes.Gray);
-
-                Dispatcher.Invoke(() =>
-                {
-                    FillVersionList(collection);
-                });
-            }
-            catch (Exception ex)
-            {
-                SafeLog($"[Versions] Ошибка: {ex.Message}", Brushes.Red);
-            }
-            finally
-            {
-                _isSyncRunning = false;
-            }
-        }
-        private void LoadLocalVersions()
-        {
-            var versionsDir = System.IO.Path.Combine(AppDataPath, "versions");
-            if (!Directory.Exists(versionsDir)) return;
-
-            VersionListBox.Items.Clear();
-
-            foreach (var dir in Directory.GetDirectories(versionsDir))
-            {
-                var name = System.IO.Path.GetFileName(dir);
-
-                VersionListBox.Items.Add(new ListBoxItem
-                {
-                    Content = name,
-                    Foreground = Brushes.White
-                });
-            }
-        }
+        
         private void KillGame_Click(object sender, RoutedEventArgs e)
         {
             try

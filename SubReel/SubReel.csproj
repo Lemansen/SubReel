@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <Folder Include="Properties\" />
+    <Folder Include="Assets\" />
+    <Folder Include="View\UI\" />
   </ItemGroup>
 
   <ItemGroup>

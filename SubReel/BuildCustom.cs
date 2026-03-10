@@ -24,6 +24,13 @@ namespace SubReel
             get => _isFavorite;
             set { _isFavorite = value; OnPropertyChanged(nameof(IsFavorite)); }
         }
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set { _isSelected = value; OnPropertyChanged(nameof(IsSelected)); }
+        }
+
 
         public BuildModel(string name, string version, string loader, bool isFavorite = false)
         {
@@ -41,7 +48,10 @@ namespace SubReel
     {
         // Список всех сборок
         public static List<BuildModel> Builds = new();
-
+        public static IEnumerable<BuildModel> GetAllBuilds()
+        {
+            return Builds;
+        }
         // Метод добавления, который просил компилятор
         public static void AddBuild(BuildModel build)
         {
@@ -54,7 +64,7 @@ namespace SubReel
             query = query?.ToLower() ?? "";
             return Builds.Where(b =>
                 (string.IsNullOrEmpty(query) || b.Name.ToLower().Contains(query)) &&
-                b.IsFavorite == favoritesOnly
+                (!favoritesOnly || b.IsFavorite) // Если favoritesOnly = false, условие всегда истинно
             );
         }
     }

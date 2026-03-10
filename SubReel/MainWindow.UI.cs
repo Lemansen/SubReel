@@ -399,7 +399,7 @@ namespace SubReel
             if (NewsPanel != null) NewsPanel.Visibility = Visibility.Collapsed;
             if (CommunityPanel != null) CommunityPanel.Visibility = Visibility.Collapsed;
             if (CreateBuildPage != null) CreateBuildPage.Visibility = Visibility.Collapsed;
-
+            if (BuildSettingsPage != null) BuildSettingsPage.Visibility = Visibility.Collapsed;
             // Показываем нужную
             panel.Visibility = Visibility.Visible;
 
@@ -837,12 +837,123 @@ namespace SubReel
 
                 // Пересобираем списки, чтобы карточка перепрыгнула из "Созданных" в "Избранное"
                 RefreshBuildsUI();
-
+                string status = build.IsFavorite ? "ДОБАВЛЕНО В ИЗБРАННОЕ" : "УДАЛЕНО ИЗ ИЗБРАННОГО";
+                ShowNotification(status);
                 SafeLog($"[UI] Сборка {build.Name} {(build.IsFavorite ? "добавлена в" : "удалена из")} избранного", Brushes.Gray);
             }
         }
+        // --- ОБРАБОТЧИКИ ДЛЯ КАРТОЧЕК СБОРОК ---
 
+        // 1. Выбор карточки (Клик по всей области кнопки)
+        private void SelectBuild_Click(object sender, RoutedEventArgs e)
+        {
+            // В ItemsControl DataContext кнопки — это объект BuildModel
+            if (sender is FrameworkElement fe && fe.DataContext is BuildModel clickedBuild)
+            {
+                // Снимаем выделение со всех сборок через менеджер или напрямую в коллекции
+                foreach (var build in BuildManager.GetAllBuilds())
+                {
+                    build.IsSelected = false;
+                }
 
+                // Выделяем ту, по которой кликнули
+                clickedBuild.IsSelected = true;
+
+                // Обновляем текст в нижней панели (если нужно)
+                if (SelectedVersionBottom != null)
+                    SelectedVersionBottom.Text = $"{clickedBuild.Name} ({clickedBuild.Version})";
+
+                SafeLog($"[UI] Выбрана сборка: {clickedBuild.Name}", Brushes.AliceBlue);
+            }
+        }
+        // 2. Обработчик нажатия на "Настройки" (Шестеренка)
+        private void OpenBuildSettings_Click(object sender, RoutedEventArgs e)
+        {
+            // 1. Получаем данные сборки, на которую нажали
+            var button = sender as Button;
+            if (button?.DataContext is BuildModel selectedBuild)
+            {
+                // 2. Скрываем главный список и панель создания
+                BuildsPanel.Visibility = Visibility.Collapsed;
+                CreateBuildPage.Visibility = Visibility.Collapsed;
+
+                // 3. Показываем страницу настроек
+                BuildSettingsPage.Visibility = Visibility.Visible;
+                BuildSettingsPage.Opacity = 1; // Можно добавить анимацию FadeIn
+
+                // 4. Обновляем хлебные крошки (Breadcrumbs)
+                AdditionalHeaderPart.Visibility = Visibility.Visible;
+                AdditionalHeaderText.Text = "Настройки";
+
+                BreadcrumbsText.Visibility = Visibility.Visible;
+                SubHeaderText.Text = selectedBuild.Name; // Имя сборки в заголовке
+
+                // 5. (Опционально) Сохраняем ссылку на текущую сборку, чтобы знать что удалять/менять
+                this.Tag = selectedBuild;
+            }
+        }
+        private BuildModel _currentEditingBuild;
+        private void OpenBuildFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentEditingBuild != null)
+            {
+                // Логика открытия папки через Process.Start
+                string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "builds", _currentEditingBuild.Name);
+                if (System.IO.Directory.Exists(path))
+                    System.Diagnostics.Process.Start("explorer.exe", path);
+            }
+        }
+        private void PlaySelectedBuild_Click(object sender, RoutedEventArgs e)
+        {
+            // Логика запуска сборки
+        }
+        private void OpenModsFolder_Click(object sender, RoutedEventArgs e)
+        {
+            // Логика открытия папки mods через Process.Start
+        }
+        private void DeleteBuild_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentEditingBuild == null) return;
+
+            // Здесь твоя логика удаления из BuildManager и из коллекции
+            // BuildManager.Delete(_currentEditingBuild);
+            // CustomBuilds.Remove(_currentEditingBuild);
+
+            BackToMain_Click(null, null); // Возвращаемся в меню
+        }
+        private void Tab_Checked(object sender, RoutedEventArgs e)
+        {
+            // Проверка на null всех вкладок
+            if (TabMain == null || TabSettings == null || TabResourcePacks == null ||
+                TabWorlds == null || TabMods == null || TabScrin == null) return;
+
+            var rb = sender as RadioButton;
+            if (rb == null || rb.Tag == null) return;
+
+            // Скрываем абсолютно все вкладки перед показом нужной
+            TabMain.Visibility = Visibility.Collapsed;
+            TabSettings.Visibility = Visibility.Collapsed;
+            TabResourcePacks.Visibility = Visibility.Collapsed;
+            TabWorlds.Visibility = Visibility.Collapsed;
+            TabMods.Visibility = Visibility.Collapsed;
+            TabScrin.Visibility = Visibility.Collapsed;
+
+            // Показываем нужную по Tag, который прописан в RadioButton в XAML
+            switch (rb.Tag.ToString())
+            {
+                case "Main": TabMain.Visibility = Visibility.Visible; break;
+                case "Settings": TabSettings.Visibility = Visibility.Visible; break;
+                case "ResourcePacks": TabResourcePacks.Visibility = Visibility.Visible; break;
+                case "Worlds": TabWorlds.Visibility = Visibility.Visible; break;
+                case "Mods": TabMods.Visibility = Visibility.Visible; break; // Была ошибка тут
+                case "SCrin": TabScrin.Visibility = Visibility.Visible; break; // И тут (регистр важен!)
+            }
+        }
+
+        private void OpenClientFolder_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
         private void CreateBtnServer_Click(object sender, RoutedEventArgs e)
         {
             ShowNotification("Этот раздел находится в разработке!");
@@ -850,45 +961,40 @@ namespace SubReel
 
         private void RefreshBuildsUI()
         {
-            if (FavoriteBuildsContainer == null || CustomBuildsContainer == null) return;
+            // Проверка на null, чтобы не упало при инициализации окна
+            if (CustomBuildsContainer == null || CustomBuilds == null) return;
 
-            // Привязываем коллекции к UI (если еще не привязаны)
-            if (FavoriteBuildsContainer.ItemsSource == null)
-                FavoriteBuildsContainer.ItemsSource = FavoriteBuilds;
+            // Привязываем коллекцию к UI, если еще не привязана
             if (CustomBuildsContainer.ItemsSource == null)
                 CustomBuildsContainer.ItemsSource = CustomBuilds;
 
-            string search = SearchBuildsBox?.Text ?? "";
+            // Берем текст, убираем пробелы по краям
+            string search = SearchBuildsBox.Text.ToLower().Trim();
 
-            // Очищаем списки
-            FavoriteBuilds.Clear();
+            // Получаем список всех сборок
+            var allBuilds = BuildManager.GetAllBuilds();
+
+            // Фильтруем и сортируем:
+            // Сначала фильтр по имени/версии, потом ИЗБРАННЫЕ ВВЕРХ, потом по алфавиту
+            var sortedList = allBuilds
+                .Where(b => string.IsNullOrEmpty(search) ||
+                            b.Name.ToLower().Contains(search) ||
+                            b.Version.ToLower().Contains(search))
+                .OrderByDescending(b => b.IsFavorite) // true (избранное) будет выше false
+                .ThenBy(b => b.Name)
+                .ToList();
+
+            // Синхронизируем ObservableCollection
             CustomBuilds.Clear();
-
-            // Заполняем данными
-            foreach (var build in BuildManager.GetFiltered(search, true))
-                FavoriteBuilds.Add(build);
-
-            foreach (var build in BuildManager.GetFiltered(search, false))
+            foreach (var build in sortedList)
+            {
                 CustomBuilds.Add(build);
-
-            // Показываем/скрываем секцию избранного
-            if (FavoritesSection != null)
-                FavoritesSection.Visibility = FavoriteBuilds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
         // Обработчик поиска
         private void SearchBuildsBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             RefreshBuildsUI();
-        }
-        // Для клика по самой карточке
-        private void OpenBuildSettings_Click(object sender, RoutedEventArgs e)
-        {
-            // В ItemsControl данные лежат в DataContext
-            if (sender is Button btn && btn.DataContext is BuildModel build)
-            {
-                ShowNotification($"ЗАГРУЗКА: {build.Name.ToUpper()}");
-                // Твоя логика запуска игры здесь
-            }
         }
         // Для клика по самой карточке (открытие)
         private void OpenBuild_Click(object sender, RoutedEventArgs e)

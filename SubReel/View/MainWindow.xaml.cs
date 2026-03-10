@@ -368,7 +368,9 @@ namespace SubReel
             _httpClient.Timeout = TimeSpan.FromSeconds(15);
             TryRollbackIfBroken();
             System.Net.WebRequest.DefaultWebProxy = null;
+
             InitializeComponent();
+
             SafeLog("[NET] HttpClient создан (proxy disabled)", Brushes.Gray);
 
             // ✅ очистка старого файла докачки

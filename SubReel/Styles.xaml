@@ -261,6 +261,128 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <Style x:Key="TabButtonStyle" TargetType="RadioButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="#888888"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Margin" Value="0,0,20,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid Background="Transparent">
+                        <TextBlock Text="{TemplateBinding Content}" 
+           Foreground="{TemplateBinding Foreground}" 
+           HorizontalAlignment="Center" 
+           VerticalAlignment="Center" 
+           Margin="0,0,0,10"/>
+                        <Border x:Name="ActiveIndicator" 
+        Height="3" Width="Auto" 
+        Background="{StaticResource AccentBlue}" 
+        VerticalAlignment="Bottom" 
+        CornerRadius="1.5" 
+        Visibility="Collapsed">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#4C85FF" BlurRadius="8" Opacity="0.5" ShadowDepth="0"/>
+                            </Border.Effect>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="ModernToggleSwitch" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Grid x:Name="SwitchRoot" Width="40" Height="22">
+                            <Border x:Name="Background" Background="#2B2D3A" CornerRadius="11"/>
+                            <Ellipse x:Name="Thumb" Fill="#888888" Width="14" Height="14" HorizontalAlignment="Left" Margin="4,0,0,0">
+                                <Ellipse.RenderTransform>
+                                    <TranslateTransform X="0"/>
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                        </Grid>
+                        <ContentPresenter Margin="12,0,0,0" VerticalAlignment="Center" TextBlock.Foreground="White" TextBlock.FontSize="14"/>
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Background" Property="Background" Value="{StaticResource AccentBlue}"/>
+                            <Setter TargetName="Thumb" Property="Fill" Value="White"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Thumb" 
+                                                       Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" 
+                                                       To="18" Duration="0:0:0.15"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Thumb" 
+                                                       Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" 
+                                                       To="0" Duration="0:0:0.15"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="SidebarBuildButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="#16171D"/>
+        <Setter Property="Height" Value="46"/>
+        <Setter Property="Margin" Value="0,0,0,8"/>
+        <Setter Property="Foreground" Value="#888888"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="btnBorder" Background="{TemplateBinding Background}" CornerRadius="12" BorderThickness="1" BorderBrush="#1FFFFFFF">
+                        <Grid Margin="15,0">
+                            <Rectangle x:Name="ActiveIndicator" Width="3" Height="0" Fill="{StaticResource AccentBlue}" RadiusX="1.5" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-15,0,0,0"/>
+
+                            <ContentPresenter x:Name="cp" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="btnBorder" Property="Background" Value="#1D1E26"/>
+                            <Setter TargetName="btnBorder" Property="BorderBrush" Value="#33FFFFFF"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter Property="Opacity" Value="0.8"/>
+                        </Trigger>
+                        <Trigger Property="Tag" Value="Active">
+                            <Setter TargetName="ActiveIndicator" Property="Height" Value="18"/>
+                            <Setter TargetName="btnBorder" Property="Background" Value="#15161E"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <Style x:Key="SidebarButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>

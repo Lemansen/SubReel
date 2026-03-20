@@ -20,6 +20,10 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.Linq;
+using SubReel.Models;
+using SubReel.Core;
+using SubReel.Models.Config;
+using SubReel.Models.Chat;
 #nullable enable
 
 namespace SubReel
@@ -41,7 +45,6 @@ namespace SubReel
         public ObservableCollection<BuildModel> FavoriteBuilds { get; set; } = new();
         public ObservableCollection<BuildModel> CustomBuilds { get; set; } = new();
         private LauncherState _state = LauncherState.Idle;
-        private bool _isProcessingNotifications = false;
         private Random _rnd = new Random();
         private async Task<CrashReport?> AnalyzeCrashAsync()
         {
@@ -73,76 +76,15 @@ namespace SubReel
         private void SetState(LauncherState state, string? message = null)
         {
             _state = state;
+            var visualState = CreateLauncherVisualState(state, message);
 
-            switch (state)
-            {
-                case LauncherState.Idle:
-                    StatusLabel.Text = "ГОТОВ К ЗАПУСКУ";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = true;
-                    PlayBtn.Content = "ИГРАТЬ";
-                    break;
+            StatusLabel.Text = visualState.StatusText;
+            StatusLabel.Foreground = visualState.StatusForeground;
+            PlayBtn.IsEnabled = visualState.IsPlayButtonEnabled;
+            PlayBtn.Content = visualState.PlayButtonText;
 
-                case LauncherState.Downloading:
-                    StatusLabel.Text = message ?? "ЗАГРУЗКА...";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = true;
-                    PlayBtn.Content = "ОТМЕНИТЬ";
-                    break;
-
-                case LauncherState.Installing:
-                    StatusLabel.Text = "УСТАНОВКА...";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = true;
-                    PlayBtn.Content = "ОТМЕНИТЬ";
-                    break;
-
-                case LauncherState.Launching:
-                    {
-                        bool isConsoleEnabled = ConsoleCheck?.IsChecked == true;
-
-                        StatusLabel.Text = message ??
-                            (isConsoleEnabled ? "ЗАПУСК С КОНСОЛЬЮ..." : "ЗАПУСК...");
-
-                        StatusLabel.Foreground = isConsoleEnabled
-                            ? new SolidColorBrush(Color.FromRgb(120, 200, 255))
-                            : Brushes.White;
-
-                        PlayBtn.IsEnabled = false;
-                        PlayBtn.Content = "ЗАПУСК...";
-                        break;
-                    }
-
-                case LauncherState.Running:
-                    StatusLabel.Text = "ИГРА ЗАПУЩЕНА";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = false;
-                    PlayBtn.Content = "ИГРАЕТ";
-                    break;
-
-                case LauncherState.Canceled:
-                    StatusLabel.Text = "ГОТОВ К ЗАПУСКУ";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = true;
-                    PlayBtn.Content = "ИГРАТЬ";
-                    break;
-
-                case LauncherState.Error:
-                    StatusLabel.Text = message ?? "ОШИБКА";
-                    StatusLabel.Foreground = Brushes.White;
-                    PlayBtn.IsEnabled = true;
-                    PlayBtn.Content = "ИГРАТЬ";
-                    break;
-            }
-
-            UpdatePlayButtonVisual(state);
-
-            bool shouldAnimate =
-                state == LauncherState.Downloading ||
-                state == LauncherState.Installing ||
-                state == LauncherState.Launching;
-
-            AnimatePlayButtonText(shouldAnimate);
+            AnimateButtonColor(visualState.PlayButtonColor);
+            AnimatePlayButtonText(visualState.ShouldAnimatePlayButton);
         }
         private void SelectJava_Click(object sender, RoutedEventArgs e)
         {
@@ -158,30 +100,14 @@ namespace SubReel
 
             try
             {
-                string selectedPath = dialog.FileName;
+                var selectedJava = ValidateSelectedJava(dialog.FileName, _selectedVersion ?? "1.21.1");
 
-                // если выбрали java.exe — пробуем найти рядом javaw.exe
-                if (selectedPath.EndsWith("java.exe", StringComparison.OrdinalIgnoreCase))
-                {
-                    string javaw = selectedPath.Replace("java.exe", "javaw.exe");
-                    if (File.Exists(javaw))
-                        selectedPath = javaw;
-                }
-
-                int required = GetRequiredJavaMajor(_selectedVersion ?? "1.21.1");
-                int? detected = JavaResolver.GetJavaMajorVersion(selectedPath);
-
-                if (detected == null)
-                    throw new Exception("Не удалось определить версию Java");
-
-                if (detected < required)
-                    throw new Exception($"Для этой версии Minecraft нужна Java {required}+");
-
-                _manualJavaPath = selectedPath;
+                _manualJavaPath = selectedJava.JavaPath;
+                _javaSource = JavaSourceType.Manual;
                 SaveSettings();
 
-                SafeLog($"[JAVA] Выбрана вручную: Java {detected}", Brushes.LightGreen);
-                ShowNotification($"Java {detected} выбрана");
+                SafeLog($"[JAVA] Выбрана вручную: Java {selectedJava.MajorVersion}", Brushes.LightGreen);
+                ShowNotification($"Java {selectedJava.MajorVersion} выбрана");
             }
             catch (Exception ex)
             {
@@ -190,37 +116,6 @@ namespace SubReel
             }
         }
 
-        private void UpdatePlayButtonVisual(LauncherState state)
-        {
-            if (PlayBtn == null) return;
-
-            Color targetColor;
-
-            switch (state)
-            {
-                case LauncherState.Idle:
-                case LauncherState.Canceled:
-                case LauncherState.Error:
-                    targetColor = ((SolidColorBrush)FindResource("AccentBlue")).Color;
-                    break;
-
-                case LauncherState.Downloading:
-                case LauncherState.Installing:
-                    targetColor = Color.FromRgb(220, 60, 60); // режим отмены
-                    break;
-
-                case LauncherState.Launching:
-                case LauncherState.Running:
-                    targetColor = Color.FromRgb(120, 120, 120);
-                    break;
-
-                default:
-                    targetColor = Color.FromRgb(0, 200, 120);
-                    break;
-            }
-
-            AnimateButtonColor(targetColor);
-        }
         private void AnimateButtonColor(Color targetColor)
         {
             // 1. Пытаемся получить текущую кисть
@@ -524,24 +419,22 @@ namespace SubReel
                 return;
             }
 
-            // ⭐ создаём UUID офлайн игрока
-            string uuid = Guid.NewGuid().ToString("N");
+            var auth = CreateOfflineAuth(inputNick);
 
-            // ⭐ сохраняем аккаунт
-            AccountStorage.Save(new AccountData
+            SaveStoredAccount(new AccountData
             {
-                Username = inputNick,
-                Uuid = uuid
+                Username = auth.Username,
+                Uuid = auth.Uuid
             });
 
-            CurrentSession = CmlLib.Core.Auth.MSession.CreateOfflineSession(inputNick);
+            CurrentSession = auth.Session;
+            IsLicensed = auth.IsLicensed;
 
-            DisplayNick.Text = inputNick;
+            DisplayNick.Text = auth.Username;
 
-            // ⭐ загрузка аватара сразу
-            _ = LoadUserAvatarAsync(uuid);
+            _ = LoadUserAvatarAsync(auth.Uuid);
 
-            ShowNotification($"ВЫ ВОШЛИ КАК {inputNick.ToUpper()}");
+            ShowNotification($"ВЫ ВОШЛИ КАК {auth.Username.ToUpper()}");
             CloseAuthWithAnimation();
         }
 
@@ -783,7 +676,7 @@ namespace SubReel
         }
 
         // 4. Полный выход (Кнопка X или завершение создания)
-        private void BackToMain_Click(object sender, RoutedEventArgs e)
+        private void BackToMain_Click(object? sender, RoutedEventArgs? e)
         {
             // Прячем всю цепочку крошек
             AdditionalHeaderPart.Visibility = Visibility.Collapsed;
@@ -809,8 +702,8 @@ namespace SubReel
             }
 
             string name = BuildNameInput.Text;
-            string version = ((ComboBoxItem)VersionSelector.SelectedItem).Content.ToString();
-            string loader = ((ComboBoxItem)LoaderSelector.SelectedItem).Content.ToString();
+            string version = ((ComboBoxItem)VersionSelector.SelectedItem).Content?.ToString() ?? string.Empty;
+            string loader = ((ComboBoxItem)LoaderSelector.SelectedItem).Content?.ToString() ?? string.Empty;
 
             // Создаем модель данных
             BuildModel build = new BuildModel(name, version, loader);
@@ -869,30 +762,26 @@ namespace SubReel
         // 2. Обработчик нажатия на "Настройки" (Шестеренка)
         private void OpenBuildSettings_Click(object sender, RoutedEventArgs e)
         {
-            // 1. Получаем данные сборки, на которую нажали
             var button = sender as Button;
             if (button?.DataContext is BuildModel selectedBuild)
             {
-                // 2. Скрываем главный список и панель создания
+                // 🔥 ВАЖНО: Присваиваем значение нашей переменной
+                _currentEditingBuild = selectedBuild;
+                _selectedBuild = selectedBuild;
+
                 BuildsPanel.Visibility = Visibility.Collapsed;
                 CreateBuildPage.Visibility = Visibility.Collapsed;
 
-                // 3. Показываем страницу настроек
                 BuildSettingsPage.Visibility = Visibility.Visible;
-                BuildSettingsPage.Opacity = 1; // Можно добавить анимацию FadeIn
+                BuildSettingsPage.Opacity = 1;
 
-                // 4. Обновляем хлебные крошки (Breadcrumbs)
                 AdditionalHeaderPart.Visibility = Visibility.Visible;
                 AdditionalHeaderText.Text = "Настройки";
-
-                BreadcrumbsText.Visibility = Visibility.Visible;
-                SubHeaderText.Text = selectedBuild.Name; // Имя сборки в заголовке
-
-                // 5. (Опционально) Сохраняем ссылку на текущую сборку, чтобы знать что удалять/менять
-                this.Tag = selectedBuild;
+                SubHeaderText.Text = selectedBuild.Name;
             }
         }
-        private BuildModel _currentEditingBuild;
+
+        private BuildModel? _currentEditingBuild;
         private void OpenBuildFolder_Click(object sender, RoutedEventArgs e)
         {
             if (_currentEditingBuild != null)
@@ -903,24 +792,69 @@ namespace SubReel
                     System.Diagnostics.Process.Start("explorer.exe", path);
             }
         }
+        // Это метод для кнопки "Играть" ВНУТРИ страницы настроек сборки
         private void PlaySelectedBuild_Click(object sender, RoutedEventArgs e)
         {
-            // Логика запуска сборки
+            if (_currentEditingBuild == null) return;
+
+            _selectedBuild = _currentEditingBuild;
+            Play_Click(sender, e);
         }
+
         private void OpenModsFolder_Click(object sender, RoutedEventArgs e)
         {
-            // Логика открытия папки mods через Process.Start
+            if (_currentEditingBuild == null) return;
+            string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "builds", _currentEditingBuild.Name, "mods");
+            SafeOpenFolder(path);
         }
+
+        private void OpenClientFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentEditingBuild == null) return;
+            string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "builds", _currentEditingBuild.Name);
+            SafeOpenFolder(path);
+        }
+        public static void DeleteBuild(BuildModel build) {
+    // Логика удаления из списка
+}
+        private BuildModel? _selectedBuild;
         private void DeleteBuild_Click(object sender, RoutedEventArgs e)
         {
             if (_currentEditingBuild == null) return;
 
-            // Здесь твоя логика удаления из BuildManager и из коллекции
-            // BuildManager.Delete(_currentEditingBuild);
-            // CustomBuilds.Remove(_currentEditingBuild);
+            var result = System.Windows.MessageBox.Show(
+                $"Вы уверены, что хотите удалить сборку '{_currentEditingBuild.Name}'?\nВсе файлы (моды, миры, скриншоты) будут стерты без возможности восстановления.",
+                "Подтверждение удаления",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
 
-            BackToMain_Click(null, null); // Возвращаемся в меню
+            if (result == MessageBoxResult.Yes)
+            {
+                string buildPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "builds", _currentEditingBuild.Name);
+
+                try
+                {
+                    if (System.IO.Directory.Exists(buildPath))
+                    {
+                        System.IO.Directory.Delete(buildPath, true); // true = удалить со всеми вложенными файлами
+                    }
+
+                    BuildManager.DeleteBuild(_currentEditingBuild);
+                    RefreshBuildsUI();
+
+                    ShowNotification("СБОРКА УДАЛЕНА");
+                    SafeLog($"[SYSTEM] Сборка {_currentEditingBuild.Name} полностью удалена.", System.Windows.Media.Brushes.IndianRed);
+
+                    BackToMain_Click(null, null); // Возвращаемся на главный экран
+                }
+                catch (Exception ex)
+                {
+                    ShowNotification("ОШИБКА ПРИ УДАЛЕНИИ!");
+                    SafeLog($"[ERROR] Файлы заняты другим процессом: {ex.Message}", System.Windows.Media.Brushes.Red);
+                }
+            }
         }
+
         private void Tab_Checked(object sender, RoutedEventArgs e)
         {
             // Проверка на null всех вкладок
@@ -949,11 +883,25 @@ namespace SubReel
                 case "SCrin": TabScrin.Visibility = Visibility.Visible; break; // И тут (регистр важен!)
             }
         }
-
-        private void OpenClientFolder_Click(object sender, RoutedEventArgs e)
+        // Вспомогательный метод для безопасного открытия папок
+        private void SafeOpenFolder(string folderPath)
         {
-
+            try
+            {
+                // Если папки нет — создаем её, чтобы не было ошибки
+                if (!System.IO.Directory.Exists(folderPath))
+                {
+                    System.IO.Directory.CreateDirectory(folderPath);
+                }
+                System.Diagnostics.Process.Start("explorer.exe", folderPath);
+            }
+            catch (Exception ex)
+            {
+                ShowNotification("ОШИБКА ОТКРЫТИЯ ПАПКИ!");
+                SafeLog($"[ERROR] Ошибка при открытии папки {folderPath}: {ex.Message}", System.Windows.Media.Brushes.Red);
+            }
         }
+
         private void CreateBtnServer_Click(object sender, RoutedEventArgs e)
         {
             ShowNotification("Этот раздел находится в разработке!");
@@ -1066,17 +1014,20 @@ namespace SubReel
 
         // --- УВЕДОМЛЕНИЯ И АНИМАЦИИ ---
         public void ShowNotification(string message)
+
         {
             if (NotificationToast == null || NotificationToast2 == null)
                 return;
-
             _notificationQueue.Enqueue(message);
             TryShowNotification();
         }
+
         private void TryShowNotification()
+
         {
             // если первое пустое — показываем в первом
             if (!_isToast1Showing && _notificationQueue.Count > 0)
+
             {
                 ShowToast(NotificationToast, NotificationText, 30, () =>
                 {
@@ -1087,49 +1038,61 @@ namespace SubReel
                 _isToast1Showing = true;
                 return;
             }
-
             // если первое занято, но второе свободно
+
             if (_isToast1Showing && !_isToast2Showing && _notificationQueue.Count > 0)
+
             {
                 // поднимаем первое выше
                 NotificationToast.BeginAnimation(Canvas.TopProperty,
                     new DoubleAnimation(30, -50, TimeSpan.FromMilliseconds(300)));
-
                 ShowToast(NotificationToast2, NotificationText2, 30, () =>
+
                 {
                     _isToast2Showing = false;
-
                     // возвращаем первое вниз если осталось одно
                     if (_isToast1Showing)
                     {
                         NotificationToast.BeginAnimation(Canvas.TopProperty,
                             new DoubleAnimation(-50, 30, TimeSpan.FromMilliseconds(300)));
                     }
-
                     TryShowNotification();
                 });
-
                 _isToast2Showing = true;
             }
         }
         private void ShowToast(Border toast, TextBlock text, double top, Action onClose)
+
         {
+
             string message = _notificationQueue.Dequeue();
+
             text.Text = message;
 
+
+
             // 👉 ВАЖНО: заставляем WPF измерить размер тоста
+
             toast.UpdateLayout();
 
+
+
             double toastWidth = toast.ActualWidth > 0 ? toast.ActualWidth : 320;
+
             double centerX = (this.ActualWidth - toastWidth) / 2;
+
             Canvas.SetLeft(toast, centerX);
 
-            // 👉 правильная стартовая позиция (выше экрана полностью)
-            double startY = -toast.ActualHeight - 20;
 
+
+            // 👉 правильная стартовая позиция (выше экрана полностью)
+
+            double startY = -toast.ActualHeight - 20;
             var slideDown = new DoubleAnimation(startY, top, TimeSpan.FromMilliseconds(400))
+
             {
                 EasingFunction = new BackEase
+
                 {
                     Amplitude = 0.5,
                     EasingMode = EasingMode.EaseOut
@@ -1137,25 +1100,19 @@ namespace SubReel
             };
 
             var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300));
-
             toast.BeginAnimation(Canvas.TopProperty, slideDown);
             toast.BeginAnimation(UIElement.OpacityProperty, fadeIn);
-
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.5) };
-
             timer.Tick += (s, e) =>
+
             {
                 timer.Stop();
-
                 var slideUp = new DoubleAnimation(top, startY, TimeSpan.FromMilliseconds(300));
                 var fadeOut = new DoubleAnimation(0, TimeSpan.FromMilliseconds(250));
-
                 slideUp.Completed += (s2, e2) => onClose?.Invoke();
-
                 toast.BeginAnimation(Canvas.TopProperty, slideUp);
                 toast.BeginAnimation(UIElement.OpacityProperty, fadeOut);
             };
-
             timer.Start();
         }
 

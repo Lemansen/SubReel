@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="SubReel/SubReel.csproj" />
+  <Project Path="SubReel.Launcher.Core/SubReel.Launcher.Core.csproj" />
+  <Project Path="SubReel.Avalonia/SubReel.Avalonia.csproj" />
 </Solution>

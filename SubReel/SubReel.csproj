@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
 
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
@@ -14,26 +15,46 @@
 
     <PublishTrimmed>false</PublishTrimmed>
 
-    <ApplicationIcon>C:\Users\Lemansen\source\repos\SubReel.Ico</ApplicationIcon>
+    <ApplicationIcon>assets\SubReel.ico</ApplicationIcon>
   </PropertyGroup>
+
+    <ItemGroup>
+      <None Remove="assets\SubReel.ico" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="assets\SubReel.ico" />
+    </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CmlLib.Core" Version="4.0.6" />
     <PackageReference Include="CmlLib.Core.Auth.Microsoft" Version="3.3.1" />
     <PackageReference Include="Costura.Fody" Version="6.0.0">
       <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SubReel.Launcher.Core\SubReel.Launcher.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\Launcher\" />
+    <Folder Include="Models\News\" />
+    <Folder Include="Presentation\View\Pages\" />
+    <Folder Include="Presentation\View\Components\" />
     <Folder Include="Properties\" />
-    <Folder Include="Assets\" />
-    <Folder Include="View\UI\" />
+    <Folder Include="App\" />
   </ItemGroup>
 
   <ItemGroup>
     <Page Include="App.xaml" />
   </ItemGroup>
+
+<ItemGroup>
+  <Content Include="assets\SubReel.ico">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+</ItemGroup>
 
 </Project>

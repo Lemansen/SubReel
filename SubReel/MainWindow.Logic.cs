@@ -25,6 +25,10 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using IO = System.IO;
 using IOPath = System.IO.Path;
+using SubReel.Models;
+using SubReel.Models.Config;
+using SubReel.Core;
+
 #nullable enable
 
 
@@ -32,23 +36,6 @@ namespace SubReel
 {
     public partial class MainWindow : Window
     {
-
-        private int GetRequiredJavaMajor(string mcVersion)
-        {
-            if (Version.TryParse(mcVersion, out var v))
-            {
-                if (v >= new Version(1, 20, 5)) return 21;
-                if (v >= new Version(1, 17)) return 17;
-            }
-
-            return 8;
-        }
-        public enum JavaSourceType
-        {
-            Bundled,   // скачанная лаунчером
-            System,    // из PATH
-            Manual     // выбранная пользователем
-        }
         // --- НАСТРОЙКИ И ОБНОВЛЕНИЯ ---
         public void SaveSettings()
         {
@@ -69,7 +56,7 @@ namespace SubReel
                 s.ManualJavaPath = _manualJavaPath;
                 s.JavaSource = _javaSource;
 
-                SettingsManager.Save(ConfigPath);
+                SaveAppSettings();
 
                 Debug.WriteLine("Настройки успешно сохранены: " + ConfigPath);
             }
@@ -77,55 +64,6 @@ namespace SubReel
             {
                 Debug.WriteLine("Ошибка сохранения настроек: " + ex.Message);
             }
-        }
-        private string? FindSystemJava()
-        {
-            try
-            {
-                var javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
-
-                if (!string.IsNullOrWhiteSpace(javaHome))
-                {
-                    var path = System.IO.Path.Combine(javaHome, "bin", "javaw.exe");
-                    if (File.Exists(path))
-                        return path;
-                }
-
-                var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-                var javaDir = System.IO.Path.Combine(programFiles, "Java");
-
-                if (Directory.Exists(javaDir))
-                {
-                    foreach (var dir in Directory.GetDirectories(javaDir))
-                    {
-                        var path = System.IO.Path.Combine(dir, "bin", "javaw.exe");
-                        if (File.Exists(path))
-                            return path;
-                    }
-                }
-            }
-            catch { }
-
-            return null;
-        }
-        private LaunchOptions BuildLaunchOptions()
-        {
-            return new LaunchOptions
-            {
-                Nickname = string.IsNullOrWhiteSpace(NicknameBox?.Text)
-                    ? "Player"
-                    : NicknameBox.Text.Trim(),
-
-                RamMb = (int)(RamSlider?.Value ?? 4096),
-                Version = _selectedVersion ?? "1.21.1",
-                ShowConsole = ConsoleCheck?.IsChecked == true,
-                IsLicensed = IsLicensed,
-                Session = CurrentSession,
-
-                GamePath = AppDataPath,   // 🔥 ОБЯЗАТЕЛЬНО
-
-                JavaPath = null
-            };
         }
         private void ApplySettingsToUI()
         {
@@ -149,16 +87,6 @@ namespace SubReel
             if (GbText != null)
                 GbText.Text = $"{(s.Ram / 1024.0):F1} GB";
         }
-
-        public class LauncherSettings
-        {
-            public string Nickname { get; set; } = "Player";
-            public double Ram { get; set; } = 4096;
-            public bool IsLicensed { get; set; } = false;
-            public string SelectedVersion { get; set; } = "1.21.1";
-            public bool IsConsoleShow { get; set; } = false;
-        }
-
 
         private void LoadSettings()
         {
@@ -336,8 +264,9 @@ namespace SubReel
                             // можно проверять его. Пока оставляем проверку по количеству игроков:
                             if (OnlineCircle != null)
                             {
+                                var onlineBrush = new BrushConverter().ConvertFrom("#20F289") as SolidColorBrush ?? Brushes.LimeGreen;
                                 OnlineCircle.Fill = isOnline
-                                    ? (SolidColorBrush)new BrushConverter().ConvertFrom("#20F289")
+                                    ? onlineBrush
                                     : Brushes.Gray;
                             }
                         }
@@ -420,7 +349,7 @@ namespace SubReel
             }
         }
         private bool _isUpdating = false;
-        private CancellationTokenSource _updateCts;
+        private CancellationTokenSource? _updateCts;
         private void RamSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             // Проверка на null обязательна, так как событие срабатывает при инициализации XAML
@@ -483,7 +412,7 @@ namespace SubReel
                     msg =>
                     {
                         SafeLog(msg, Brushes.Orange);
-                        AppLogger.Log(msg);
+                        WriteLauncherLog(msg);
                         if (msg.Contains("Попытка"))
                         {
                             Dispatcher.Invoke(() =>
@@ -533,7 +462,7 @@ namespace SubReel
                                 lastUiUpdate = totalRead;
 
                                 long fullRead = existingBytes + totalRead;
-                                int percent = (int)(fullRead * 100 / (existingBytes + totalBytes.Value));
+                                int percent = (int)(fullRead * 100 / (existingBytes + totalBytes!.Value));
                             }
                         }
                     }
@@ -674,7 +603,7 @@ del ""%~f0""
                 SafeLog("[Update] Silent update failed: " + ex.Message, Brushes.Gray);
             }
         }
-        private void SafeLog(string message, SolidColorBrush color = null)
+        private void SafeLog(string message, SolidColorBrush? color = null)
         {
             // Если мы вызвали метод не из главного потока (например, из процесса игры),
             // Dispatcher.BeginInvoke перенаправит задачу в UI-поток.
@@ -726,44 +655,36 @@ del ""%~f0""
         {
             try
             {
-                var loginHandler = new JELoginHandlerBuilder().Build();
-
-                // Показываем в статусе, что ждем действий от юзера
                 AppendLog("[Auth] Ожидание авторизации в браузере...", Brushes.Cyan);
-
-                var session = await loginHandler.AuthenticateInteractively();
+                var auth = await LoginWithMicrosoftAsync();
 
                 Dispatcher.Invoke(() =>
                 {
-                    if (session != null)
+                    DisplayNick.Text = auth.Username;
+
+                    try
                     {
-                        DisplayNick.Text = session.Username;
-
-                        // Проверка на корректность URL аватара
-                        try
-                        {
-                            UserAvatarImg.ImageSource = new System.Windows.Media.Imaging.BitmapImage(new Uri($"https://minotar.net/helm/{session.Username}/45.png"));
-                        }
-                        catch { /* Если сервис аватаров лежит, не падаем */ }
-
-                        if (AccountTypeStatus != null)
-                        {
-                            AccountTypeStatus.Text = "PREMIUM";
-                            AccountTypeStatus.Foreground = Brushes.Black;
-                        }
-                        if (AccountTypeBadge != null)
-                        {
-                            AccountTypeBadge.Background = new SolidColorBrush(Color.FromRgb(255, 170, 0));
-                        }
-
-                        ShowNotification($"Лицензия: {session.Username}");
-                        CloseAuthWithAnimation();
-                        IsLicensed = true;
-                        CurrentSession = session;
-
-                        AppendLog($"[Auth] Успешный вход: {session.Username}", Brushes.Lime);
-                        SaveSettings(); // Сохраняем сессию сразу после успеха
+                        UserAvatarImg.ImageSource = new System.Windows.Media.Imaging.BitmapImage(new Uri($"https://minotar.net/helm/{auth.Username}/45.png"));
                     }
+                    catch { }
+
+                    if (AccountTypeStatus != null)
+                    {
+                        AccountTypeStatus.Text = "PREMIUM";
+                        AccountTypeStatus.Foreground = Brushes.Black;
+                    }
+                    if (AccountTypeBadge != null)
+                    {
+                        AccountTypeBadge.Background = new SolidColorBrush(Color.FromRgb(255, 170, 0));
+                    }
+
+                    ShowNotification($"Лицензия: {auth.Username}");
+                    CloseAuthWithAnimation();
+                    IsLicensed = auth.IsLicensed;
+                    CurrentSession = auth.Session;
+
+                    AppendLog($"[Auth] Успешный вход: {auth.Username}", Brushes.Lime);
+                    SaveSettings();
                 });
             }
             catch (Exception ex)
@@ -782,13 +703,12 @@ del ""%~f0""
             if (!IsLicensed) return;
             try
             {
-                var loginHandler = new JELoginHandlerBuilder().Build();
-                var session = await loginHandler.AuthenticateSilently();
-                if (session != null)
+                var auth = await TrySilentMicrosoftLoginAsync();
+                if (auth != null)
                 {
-                    CurrentSession = session;
-                    DisplayNick.Text = session.Username;
-                    UserAvatarImg.ImageSource = new System.Windows.Media.Imaging.BitmapImage(new Uri($"https://minotar.net/helm/{session.Username}/45.png"));
+                    CurrentSession = auth.Session;
+                    DisplayNick.Text = auth.Username;
+                    UserAvatarImg.ImageSource = new System.Windows.Media.Imaging.BitmapImage(new Uri($"https://minotar.net/helm/{auth.Username}/45.png"));
                 }
             }
             catch { IsLicensed = false; }
@@ -814,15 +734,6 @@ del ""%~f0""
             }
             catch { }
         }
-        private void LogJvmArguments(Process gameProcess)
-        {
-            try
-            {
-                SafeLog("[JVM] Параметры запуска:", Brushes.Gray);
-                SafeLog(gameProcess.StartInfo.Arguments, Brushes.Gray);
-            }
-            catch { }
-        }
         // --- ЗАПУСК ИГРЫ ---
         private async void Play_Click(object sender, RoutedEventArgs e)
         {
@@ -843,24 +754,16 @@ del ""%~f0""
                 _downloadCts = new CancellationTokenSource();
                 SaveSettings();
 
-                var opt = BuildLaunchOptions();
-                bool hasInternet = await HasInternetAsync();
-                opt.OfflineMode = !hasInternet || !opt.IsLicensed;
-
-                if (string.IsNullOrEmpty(opt.JavaPath))
-                    opt.JavaPath = await ResolveJavaPathAsync(opt, _downloadCts.Token);
-
-                string? problem = DiagnoseLaunchEnvironment(opt, AppDataPath);
-                if (problem != null) throw new Exception(problem);
-
-                var gameProcess = await InstallGameAsync(opt, _downloadCts.Token);
+                var opt = CreateLaunchOptions();
+                var launchResult = await LaunchGameFlowAsync(opt, _downloadCts.Token);
+                var gameProcess = launchResult.Process;
 
                 if (gameProcess != null)
                 {
-                    gameProcess.EnableRaisingEvents = true;
-                    ConfigureProcess(gameProcess, opt);
+                    bool showConsole = ConsoleCheck?.IsChecked == true;
+                    ConfigureGameProcess(gameProcess, opt, showConsole);
 
-                    await StartGameAsync(gameProcess);
+                    await StartConfiguredGameAsync(gameProcess, showConsole);
 
                     // ⭐ 1. ПОДТВЕРЖДАЕМ ЗАПУСК
                     isGameRunning = true;
@@ -880,7 +783,7 @@ del ""%~f0""
                     {
                         try
                         {
-                            gameProcess.WaitForExit();
+                            WaitForGameExitAsync(gameProcess).GetAwaiter().GetResult();
                         }
                         catch { /* Процесс мог закрыться некорректно */ }
                         finally
@@ -967,7 +870,7 @@ del ""%~f0""
             {
                 SafeLog("[JAVA] Запрошена переустановка", Brushes.Orange);
 
-                int javaVer = GetRequiredJavaMajor(_selectedVersion ?? "1.21.1");
+                int javaVer = GetRequiredJavaVersion(_selectedVersion ?? "1.21.1");
 
                 string runtimeDir = System.IO.Path.Combine(AppDataPath, "runtime", $"java{javaVer}");
 
@@ -1033,80 +936,6 @@ del ""%~f0""
 
             await Task.CompletedTask;
         }
-        private void ConfigureProcess(Process gameProcess, LaunchOptions opt)
-        {
-            bool console = ConsoleCheck.IsChecked == true;
-
-            if (string.IsNullOrWhiteSpace(opt.JavaPath))
-                throw new Exception("Java не подготовлена");
-
-            if (!File.Exists(opt.JavaPath))
-                throw new Exception("Файл Java не найден");
-
-            if (console)
-                opt.JavaPath = opt.JavaPath.Replace("javaw.exe", "java.exe");
-
-            gameProcess.StartInfo.FileName = opt.JavaPath;
-            gameProcess.StartInfo.UseShellExecute = false;
-            gameProcess.StartInfo.CreateNoWindow = !console;
-            gameProcess.StartInfo.RedirectStandardOutput = !console;
-            gameProcess.StartInfo.RedirectStandardError = !console;
-            gameProcess.StartInfo.RedirectStandardInput = !console;
-
-            // 🔥 ВАЖНО — подписка на вывод
-            if (!console)
-            {
-                gameProcess.OutputDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Data))
-                        SafeLog(e.Data, Brushes.LightGray);
-                };
-
-                gameProcess.ErrorDataReceived += (s, e) =>
-                {
-                    if (string.IsNullOrWhiteSpace(e.Data)) return;
-
-                    if (e.Data.Contains("Exception") ||
-                        e.Data.Contains("ERROR") ||
-                        e.Data.Contains("Failed"))
-                    {
-                        SafeLog("[JVM ERROR] " + e.Data, Brushes.OrangeRed);
-                    }
-                    else
-                    {
-                        SafeLog(e.Data, Brushes.LightGray);
-                    }
-                };
-            }
-
-            SafeLog("[JVM] Path: " + opt.JavaPath, Brushes.Gray);
-            SafeLog("[JVM] RAM: " + opt.RamMb + " MB", Brushes.Gray);
-            SafeLog("[JVM] Версия: " + JavaResolver.GetJavaMajorVersion(opt.JavaPath), Brushes.Gray);
-        }
-        private async Task StartGameAsync(Process gameProcess)
-        {
-
-            LogJvmArguments(gameProcess);
-
-            gameProcess.Start();
-           
-            // 🔥 запуск чтения stdout/stderr
-            bool console = ConsoleCheck.IsChecked == true;
-
-            if (!console)
-            {
-                gameProcess.BeginOutputReadLine();
-                gameProcess.BeginErrorReadLine();
-            }
-
-            await Task.Delay(1500);
-
-            if (gameProcess.HasExited)
-                throw new Exception($"JVM завершилась сразу после запуска (код {gameProcess.ExitCode})");
-
-            SetGameRunningUI(true);
-            SafeLog("[LAUNCH] Игра запущена", Brushes.LightGreen);
-        }
         private void MonitorGame(Process gameProcess)
         {
             _gameProcess = gameProcess;
@@ -1134,58 +963,24 @@ del ""%~f0""
         }
         private async Task<string> ResolveJavaPathAsync(LaunchOptions opt, CancellationToken token)
         {
-            int requiredJava = GetRequiredJavaMajor(opt.Version);
-
-            // MANUAL
-            if (_javaSource == JavaSourceType.Manual)
-            {
-                if (!string.IsNullOrWhiteSpace(_manualJavaPath) && File.Exists(_manualJavaPath))
-                    return _manualJavaPath;
-
-                throw new Exception("Java не выбрана вручную");
-            }
-
-            // SYSTEM
-            if (_javaSource == JavaSourceType.System)
-            {
-                string? sys = FindSystemJava();
-
-                if (!string.IsNullOrWhiteSpace(sys))
-                    return sys;
-
-                throw new Exception("Системная Java не найдена");
-            }
-
-            // BUNDLED (по умолчанию)
-            // BUNDLED (по умолчанию)
-            string? bundled = JavaResolver.GetExistingRuntime(requiredJava);
-
-            if (!string.IsNullOrWhiteSpace(bundled))
-            {
-                SafeLog("[JAVA] Найдена установленная runtime", Brushes.LightGreen);
-                return bundled;
-            }
-
-            SafeLog($"[JAVA] Требуется Java {requiredJava}", Brushes.Gray);
-            SafeLog("[JAVA] Runtime не найдена, начинаю установку...", Brushes.Orange);
-
             var progress = new Progress<double>(p =>
             {
                 StatusLabel.Text = $"Установка Java {Math.Round(p)}%";
-
                 SafeLog($"[JAVA] Установка {Math.Round(p)}%", Brushes.LightBlue);
             });
 
             try
             {
-                string path = await JavaResolver.EnsureBundledJavaAsync(
-                    requiredJava,
+                string path = await ResolveJavaRuntimeAsync(
+                    opt.Version,
                     progress,
                     token,
                     msg =>
                     {
-                        SafeLog(msg, Brushes.Orange);
-                        AppLogger.Log(msg);
+                        SafeLog(msg, msg.Contains("успешно") || msg.Contains("Найдена")
+                            ? Brushes.LightGreen
+                            : Brushes.Orange);
+                        WriteLauncherLog(msg);
                         if (msg.Contains("Попытка"))
                         {
                             Dispatcher.Invoke(() =>
@@ -1199,7 +994,6 @@ del ""%~f0""
                 if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                     throw new Exception("Установка Java завершилась без результата");
 
-                SafeLog("[JAVA] Установка успешно завершена", Brushes.LightGreen);
                 return path;
             }
             catch (Exception ex)
@@ -1210,8 +1004,8 @@ del ""%~f0""
         }
         public class LaunchProfile
         {
-            public string Name { get; set; }
-            public string Version { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public string Version { get; set; } = string.Empty;
             public int RamMb { get; set; }
             public string? JavaPath { get; set; }
         }
@@ -1225,43 +1019,7 @@ del ""%~f0""
             {
                 SetState(LauncherState.Downloading);
                 StatusLabel.Text = "Подготовка игры...";
-
-                var service = new LauncherService(AppDataPath, msg => SafeLog(msg, Brushes.Orange));
-
-                // ⭐ Теперь эта ошибка исчезнет
-                service.ProgressChanged += (s, e) =>
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        MainProgressBar.IsIndeterminate = false;
-
-                        // 1. Считаем процент заполнения сами
-                        // Формула: (Выполнено / Всего) * 100
-                        double percentage = 0;
-                        if (e.TotalTasks > 0)
-                        {
-                            percentage = (double)e.ProgressedTasks / e.TotalTasks * 100;
-                        }
-
-                        // 2. Запускаем плавное заполнение полоски
-                        DoubleAnimation smoothProgress = new DoubleAnimation
-                        {
-                            To = percentage,
-                            Duration = TimeSpan.FromMilliseconds(450), // Время "доезда" полоски
-                            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-                        };
-
-                        MainProgressBar.BeginAnimation(ProgressBar.ValueProperty, smoothProgress);
-
-                        // 3. Обновляем текст (показываем и цифры, и проценты)
-                        StatusLabel.Text = $"Загрузка: {e.ProgressedTasks}/{e.TotalTasks} ({(int)percentage}%)";
-                    });
-                };
-
-
-
-                var process = await service.PrepareAndCreateProcessAsync(
-                    opt.Version, opt, null, null, token);
+                var process = await InstallGameCoreAsync(opt, token);
 
                 StatusLabel.Text = "Готово";
                 SetState(LauncherState.Installing);
@@ -1290,96 +1048,6 @@ del ""%~f0""
             }
         }
 
-        private async Task<string> PrepareJavaAsync(LaunchOptions opt, CancellationToken token)
-        {
-            PlayBtn.IsEnabled = false;
-
-            int requiredJava = GetRequiredJavaMajor(opt.Version);
-
-            var javaProgress = new Progress<double>(p =>
-            {
-                StatusLabel.Text = $"Подготовка Java {Math.Round(p)}%";
-            });
-
-            // ==============================
-            // 1️⃣ MANUAL JAVA
-            // ==============================
-            if (!string.IsNullOrWhiteSpace(_manualJavaPath))
-            {
-                SafeLog("[JAVA] Проверка вручную выбранной Java...", Brushes.Gray);
-
-                if (!File.Exists(_manualJavaPath))
-                    throw new Exception("Указанный файл Java не найден");
-
-                var ver = JavaResolver.GetJavaMajorVersion(_manualJavaPath);
-
-                if (ver == null)
-                    throw new Exception("Не удалось определить версию выбранной Java");
-
-                if (ver < requiredJava)
-                    throw new Exception($"Для версии {opt.Version} требуется Java {requiredJava}");
-
-                SafeLog($"[JAVA] Используется ручная Java {ver}", Brushes.LightGreen);
-
-                opt.JavaPath = _manualJavaPath;
-                return _manualJavaPath;
-            }
-
-            // ==============================
-            // 2️⃣ BUNDLED JAVA
-            // ==============================
-            SafeLog("[JAVA] Проверка встроенного runtime...", Brushes.Gray);
-
-            string bundledPath = JavaResolver.GetBundledJavaPath(requiredJava);
-
-            if (!string.IsNullOrWhiteSpace(bundledPath) && File.Exists(bundledPath))
-            {
-                var ver = JavaResolver.GetJavaMajorVersion(bundledPath);
-
-                if (ver >= requiredJava)
-                {
-                    SafeLog($"[JAVA] Используется runtime Java {ver}", Brushes.LightGreen);
-                    opt.JavaPath = bundledPath;
-                    return bundledPath;
-                }
-            }
-
-            // ==============================
-            // 3️⃣ СКАЧИВАНИЕ
-            // ==============================
-            SafeLog($"[JAVA] Установка Java {requiredJava}...", Brushes.Orange);
-
-            string javaPath = await JavaResolver.EnsureBundledJavaAsync(
-                requiredJava,
-                javaProgress,
-                token,
-                msg => SafeLog(msg, Brushes.Gray)
-            );
-
-            if (!File.Exists(javaPath))
-                throw new Exception("Java установлена некорректно");
-
-            var detected = JavaResolver.GetJavaMajorVersion(javaPath);
-            if (detected < requiredJava)
-                throw new Exception("Ошибка установки Java");
-
-            SafeLog($"[JAVA] Установлена Java {detected}", Brushes.LightGreen);
-
-            opt.JavaPath = javaPath;
-            return javaPath;
-        }
-        public static string GetBundledJavaPath(int version)
-        {
-            string dir = System.IO.Path.Combine(RuntimeRoot, $"java{version}");
-            string path = System.IO.Path.Combine(dir, "bin", "javaw.exe");
-            return File.Exists(path) ? path : null;
-        }
-        public static string RuntimeRoot =>
-    System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "SubReel",
-        "runtime"
-    );
         private void SaveCrashReport(CrashReport report)
         {
             try
@@ -1402,30 +1070,7 @@ del ""%~f0""
         }
         private string? DiagnoseLaunchEnvironment(LaunchOptions opt, string gamePath)
         {
-            if (string.IsNullOrWhiteSpace(opt.JavaPath))
-                return "Не найден путь к Java";
-
-            if (!File.Exists(opt.JavaPath))
-                return "Java отсутствует на диске";
-
-            var javaVer = JavaResolver.GetJavaMajorVersion(opt.JavaPath);
-            if (javaVer == null)
-                return "Не удалось определить версию Java";
-
-            int required = GetRequiredJavaMajor(opt.Version);
-            if (javaVer < required)
-                return $"Требуется Java {required}, найдена {javaVer}";
-
-            if (opt.RamMb < 1024)
-                return "Выделено слишком мало RAM";
-
-            if (!Directory.Exists(gamePath))
-                return "Папка игры не существует";
-
-            if (IsGameAlreadyRunning())
-                return "Игра уже запущена";
-
-            return null;
+            return RunLaunchDiagnostics(opt);
         }
         private void LogStep(string message)
         {
@@ -1626,12 +1271,6 @@ del ""%~f0""
             LogText.Text += $"[{DateTime.Now:HH:mm:ss}] {text}\n";
             LogScroll.ScrollToEnd();
         }
-        // Класс для чата (вынесен сюда из UI)
-        public class ChatMessage
-        {
-            public string Nickname { get; set; } = "";
-            public string Message { get; set; } = "";
-            public string AvatarUrl => $"https://minotar.net/helm/{Nickname}/32.png";
-        }
+
     }
 }
